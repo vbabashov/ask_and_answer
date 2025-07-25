@@ -23,7 +23,7 @@ This is a customer service chatbot with multi-agent design addressing a wide ran
    - Ensure all environment variables and certificate paths are set in `.env` file.
 
 
-## Running Tests
+## Running Connection Tests
 
 To run the test scripts:
 ```sh
@@ -33,10 +33,13 @@ uv run test_llm_agent.py
 
 ## Requirements
 
-- OpenAI Agents SDK
-- Langfuse
-- Gradio
-- MongoDB
+- LLM: gpt-4o 
+- Embeddings: text-embedding-ada-002
+- Framework: OpenAI Agents SDK
+- Observability/Tracing: Langfuse
+- Long-Term Memory: MongoDB
+- Evals: TBD
+- Demo: Gradio
 
 
 
