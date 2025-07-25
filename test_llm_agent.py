@@ -13,6 +13,7 @@ from agents.tracing.processors import ConsoleSpanExporter, BatchTraceProcessor
 from agents import Agent, OpenAIChatCompletionsModel, function_tool, Runner, ItemHelpers, RunContextWrapper
 
 from dotenv import load_dotenv
+load_dotenv()
 
 # client = AzureOpenAI(
 #     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
@@ -41,9 +42,6 @@ from dotenv import load_dotenv
 # print(response)
 
 def main():
-
-    # import environment variables from .env file
-    load_dotenv()
 
     token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This is a customer service chatbot with multi-agent design addressing a wide range of customer pre- and post- purchase queries about products on Canadian Tire Website.
+This is a customer service chatbot with Reason-and-Act multi-agent design addressing a wide range of customer pre- and post- purchase queries about products available for sale the on Canadian Tire Website.
 
 ## Setup
 
