@@ -1,4 +1,3 @@
-
 from src.embeddings import aoai_embed_query
 from openai import AzureOpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
@@ -8,8 +7,9 @@ load_dotenv()
 
 def main():
     
-    token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
     user_message = "What is the capital of France?"
+
+    token_provider = get_bearer_token_provider(DefaultAzureCredential(), "https://cognitiveservices.azure.com/.default")
     client = AzureOpenAI(
             api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
@@ -21,3 +21,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
