@@ -1,10 +1,9 @@
-from src.mongodb.atlas import get_mongo_client
-from dotenv import load_dotenv
+
 from src.embeddings import aoai_embed_query
 from openai import AzureOpenAI
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 import os
-
+from dotenv import load_dotenv
 load_dotenv()
 
 def main():
