@@ -33,7 +33,7 @@ uv run test_llm_agent.py
 
 ## Requirements
 
-- LLM: gpt-4o 
+- LLM: gpt-4o, gpt-4.1
 - Embeddings: text-embedding-ada-002
 - Framework: OpenAI Agents SDK
 - Observability/Tracing: Langfuse
