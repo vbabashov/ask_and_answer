@@ -13,7 +13,7 @@ This is a customer service chatbot with Reason-and-Act multi-agent design addres
    ```
 
 2. **Install dependencies**
-   - Ensure you have Python 3.8+ and [uv](https://github.com/astral-sh/uv) installed.
+   - Ensure you have Python 3.10+ and [uv](https://github.com/astral-sh/uv) installed.
    - Install dependencies:
      ```sh
      uv sync
