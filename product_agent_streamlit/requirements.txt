@@ -1,0 +1,29 @@
+# Core OpenAI Agent SDK
+openai-agents
+openai
+
+# Gradio for web interface
+gradio
+
+# PDF processing
+PyMuPDF
+
+# Image processing
+Pillow
+
+# Google Gemini AI
+google-generativeai
+
+# Environment and configuration
+python-dotenv
+
+# Optional: For better async handling
+aiofiles
+
+# Logging and utilities
+colorlog
+
+streamlit
+# Optional: For development and debugging
+ipython
+jupyter
