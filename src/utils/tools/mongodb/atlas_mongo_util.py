@@ -18,7 +18,7 @@ class MongoManager:
     def __init__(self):
         # self.client = ConnectionManager("mongodb").get_connection()
         self.client = get_mongo_client()
-        # self.database = self.client[dbname]
+        
 
     def get_or_create_collection(
             self, collection_name: str, db_name: Optional[str] = "test"
@@ -245,8 +245,10 @@ class MongoManager:
             print("Document insertion failed.")
 
    # https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/
-    async def perform_vector_search(self,  query:str):
-        collection_name = os.getenv("MONGODB_COLLECTION")
+    async def perform_vector_search(self,dbname,collection_name,query:str):
+        # database_object = self.client[dbname]
+        collection_object = self.client[dbname][collection_name]
+        # collection_name = os.getenv("MONGODB_COLLECTION")
         index_name = os.getenv("PRODUCT_SEARCH_INDEX")
         attr_name = os.getenv("SEARCH_COLUMN")
 
@@ -277,5 +279,5 @@ class MongoManager:
                 #     "$project": projected_fields
                 # }
             ]
-        results = collection_name.aggregate(pipeline)
+        results = collection_object.aggregate(pipeline)
         return list(results)

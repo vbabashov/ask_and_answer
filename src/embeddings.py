@@ -1,7 +1,7 @@
 from typing import List
 import os
 
-def aoai_embed_query(query: str, client) -> List[float]:
+async def aoai_embed_query(query: str, client) -> List[float]:
     """
     generate a vector embedding of the user's question
 
@@ -10,7 +10,7 @@ def aoai_embed_query(query: str, client) -> List[float]:
     :return: Embedded query
     """
 
-    embedding = client.embeddings.create(
+    embedding = await client.embeddings.create(
         input=query, model=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT")
     )
     embedded_query = embedding.data[0].embedding
