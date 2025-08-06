@@ -1,5 +1,4 @@
-"""UI package for user interfaces."""
+# File: ui/__init__.py
+from .streamlit_app import create_streamlit_app
 
-from .streamlit_app import create_streamlit_app, StreamlitApp
-
-__all__ = ['create_streamlit_app', 'StreamlitApp']
+__all__ = ['create_streamlit_app']

@@ -1,5 +1,4 @@
-"""Models package for data structures."""
+# File: models/__init__.py
+from .catalog_models import PDFMetadata, CatalogSearchResult, ChatMessage
 
-from .pdf_metadata import PDFMetadata
-
-__all__ = ['PDFMetadata']
+__all__ = ['PDFMetadata', 'CatalogSearchResult', 'ChatMessage']
