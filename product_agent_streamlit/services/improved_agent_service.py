@@ -475,6 +475,8 @@ class ImprovedOrchestrator:
             categories.update(summary.get('product_categories', []))
         return ', '.join(list(categories)[:5])
 
+# Add this method to ImprovedAgentService class in improved_agent_service.py
+
 class ImprovedAgentService:
     """Improved agent service using specialized agents"""
     
@@ -485,10 +487,16 @@ class ImprovedAgentService:
     
     async def initialize_catalog(self, catalog_name: str, pdf_path: str) -> None:
         """Initialize a new catalog in the system"""
+        logger.info(f"ImprovedAgentService: Initializing catalog {catalog_name}")
         await self.orchestrator.initialize_catalog(catalog_name, pdf_path)
+        logger.info(f"ImprovedAgentService: Completed initialization for {catalog_name}")
     
     async def process_query(self, query: str) -> str:
         """Process query using improved orchestrator"""
+        # Check if we have any catalogs
+        if self.get_summary_count() == 0:
+            return "No catalogs have been processed yet. Please upload PDF catalogs and wait for processing to complete."
+        
         response, _ = await self.orchestrator.process_query(query)
         return response
     
