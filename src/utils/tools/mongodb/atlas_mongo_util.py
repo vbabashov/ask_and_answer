@@ -6,8 +6,11 @@ from typing import Any
 
 from pymongo.operations import SearchIndexModel
 
-from src.mongodb.atlas import get_mongo_client
+from utils.tools.mongodb.atlas import get_mongo_client
+from embeddings import aoai_embed_query
 
+from dotenv import load_dotenv
+load_dotenv()
 
 class MongoManager:
     def __init__(self):
@@ -207,8 +210,7 @@ class MongoManager:
             {
                 "$project": {
                     "_id": 0,
-                    "filename": 1,
-                    "content": 1,
+                    "metadata": 1,
                     "score": {"$meta": "vectorSearchScore"},
                 }
             },
@@ -238,3 +240,36 @@ class MongoManager:
             print(f"Document inserted with _id: {result.inserted_id}")
         else:
             print("Document insertion failed.")
+
+   # https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/
+    def perform_vector_search(self, collection_name, index_name, attr_name, prompt=None, projection: list = [], limit=3):
+        collection = self.database[collection_name]
+        if prompt is None:
+            raise ValueError("Prompt is required")
+    
+        embedding_vector = aoai_embed_query(prompt)
+        projected_fields = dict(score= { "$meta": 'vectorSearchScore' })
+        if len(projection) != 0:
+            for field in projection:
+                projected_fields[field] = 1 # type: ignore
+        else:
+            projected_fields["document"] = '$$ROOT' # type: ignore
+
+        print(f"Projected fields: {projected_fields}")
+
+        pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": index_name,
+                        "queryVector": embedding_vector,
+                        "path": attr_name,
+                        "limit": limit,
+                        "exact": True
+                    }
+                },
+                {
+                    "$project": projected_fields
+                }
+            ]
+        results = collection.aggregate(pipeline)
+        return list(results)
