@@ -20,7 +20,6 @@ from agents import Agent, Runner, ModelSettings, function_tool
 from agents import set_default_openai_client,set_default_openai_api,set_tracing_disabled
 from pydantic import BaseModel
 
-
 mongo = MongoManager()
 openai_client = get_openai_client()
 
@@ -47,7 +46,7 @@ executor_agent = Agent(
     model=os.getenv("AZURE_OPENAI_DEPLOYMENT")
 )
 
-# Main Agent:
+# Main Agent: Orchestrator
 main_agent = Agent(
     name="MainAgent",
     instructions=REACT_INSTRUCTIONS,

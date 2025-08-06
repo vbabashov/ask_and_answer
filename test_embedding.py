@@ -25,12 +25,12 @@ async def main():
 
     mongo = MongoManager()
     results = await mongo.perform_vector_search(
-        query="espresso machines"
+        query="espresso machines", dbname=os.getenv("MONGODB_DATABASE"), collection_name=os.getenv("MONGODB_COLLECTION"),
     )
     print(f"Search results: {results}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 
 
