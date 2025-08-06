@@ -77,15 +77,29 @@ async def main():
         input = question,
     )
 
-    # handle stream events
-    print("--- Analyzing ---")
-    await handle_stream_events(result)
+    # # handle stream events
+    # print("--- Analyzing ---")
+    # await handle_stream_events(result)
 
     # print planner agent's output
     print()
     print("--- Planner Agent Output ---")
     print(result.final_output)
     print()
+
+    result = Runner.run_streamed(
+            executor_agent,
+            result.final_output
+    )
+
+    # print("--- Executing ---")
+    # await handle_stream_events(result)
+
+    print()
+    print("--- Executor Agent Output ---")
+    print(result.final_output)
+    print()
+    
 
     # # check if execution is required
     # if result.final_output.exec_required:

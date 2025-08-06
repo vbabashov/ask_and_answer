@@ -3,19 +3,22 @@ from typing import List
 from typing import Dict
 from typing import Any
 
-
+import os
 from pymongo.operations import SearchIndexModel
 
-from utils.tools.mongodb.atlas import get_mongo_client
-from embeddings import aoai_embed_query
+from src.utils.tools.mongodb.atlas import get_mongo_client
+from src.embeddings import aoai_embed_query
 
 from dotenv import load_dotenv
 load_dotenv()
+
+from src.utils.azure_openai.client import get_openai_client
 
 class MongoManager:
     def __init__(self):
         # self.client = ConnectionManager("mongodb").get_connection()
         self.client = get_mongo_client()
+        # self.database = self.client[dbname]
 
     def get_or_create_collection(
             self, collection_name: str, db_name: Optional[str] = "test"
@@ -242,20 +245,23 @@ class MongoManager:
             print("Document insertion failed.")
 
    # https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/
-    def perform_vector_search(self, collection_name, index_name, attr_name, prompt=None, projection: list = [], limit=3):
-        collection = self.database[collection_name]
-        if prompt is None:
-            raise ValueError("Prompt is required")
-    
-        embedding_vector = aoai_embed_query(prompt)
-        projected_fields = dict(score= { "$meta": 'vectorSearchScore' })
-        if len(projection) != 0:
-            for field in projection:
-                projected_fields[field] = 1 # type: ignore
-        else:
-            projected_fields["document"] = '$$ROOT' # type: ignore
+    async def perform_vector_search(self,  query:str):
+        collection_name = os.getenv("MONGODB_COLLECTION")
+        index_name = os.getenv("PRODUCT_SEARCH_INDEX")
+        attr_name = os.getenv("SEARCH_COLUMN")
 
-        print(f"Projected fields: {projected_fields}")
+        if query is None:
+            raise ValueError("Query is required")
+
+        embedding_vector = await aoai_embed_query(query=query, client=get_openai_client())
+        # projected_fields = dict(score= { "$meta": 'vectorSearchScore' })
+        # if len(projection) != 0:
+        #     for field in projection:
+        #         projected_fields[field] = 1 # type: ignore
+        # else:
+        #     projected_fields["document"] = '$$ROOT' # type: ignore
+
+        # print(f"Projected fields: {projected_fields}")
 
         pipeline = [
                 {
@@ -263,13 +269,13 @@ class MongoManager:
                         "index": index_name,
                         "queryVector": embedding_vector,
                         "path": attr_name,
-                        "limit": limit,
+                        "limit": 3,
                         "exact": True
                     }
                 },
-                {
-                    "$project": projected_fields
-                }
+                # {
+                #     "$project": projected_fields
+                # }
             ]
-        results = collection.aggregate(pipeline)
+        results = collection_name.aggregate(pipeline)
         return list(results)
