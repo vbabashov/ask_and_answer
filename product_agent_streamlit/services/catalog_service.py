@@ -73,45 +73,6 @@ class CatalogService:
         
         return "\n\n".join(summaries)
     
-    # def search_relevant_catalogs(self, query: str, top_k: int = 3) -> List[CatalogSearchResult]:
-    #     """Search for the most relevant catalogs based on query"""
-    #     if not self.catalogs:
-    #         return []
-        
-    #     try:
-    #         logger.info(f"Searching catalogs for query: {query}")
-            
-    #         # Get catalog summaries
-    #         catalog_summaries = self.get_catalog_summaries()
-            
-    #         # Search using Gemini
-    #         rankings = self.gemini_service.search_catalogs(query, catalog_summaries)
-            
-    #         results = []
-    #         for item in rankings:
-    #             catalog_name = item.get('catalog')
-    #             score = item.get('relevance_score', 0)
-    #             reason = item.get('reason', 'No reason provided')
-                
-    #             if catalog_name in self.catalogs:
-    #                 results.append(CatalogSearchResult(
-    #                     catalog_name=catalog_name,
-    #                     relevance_score=float(score),
-    #                     reason=reason
-    #                 ))
-            
-    #         # Sort by relevance score and return top_k
-    #         results.sort(key=lambda x: x.relevance_score, reverse=True)
-    #         print("THIS IS THE FINAL RELEVANT CATALOGS", results)
-    #         return results[:top_k]
-            
-    #     except Exception as e:
-    #         logger.error(f"Error in catalog search: {e}")
-    #         # Fallback: return all catalogs with equal scores
-    #         return [
-    #             CatalogSearchResult(filename, 5.0, "Fallback result")
-    #             for filename in list(self.catalogs.keys())[:top_k]
-    #         ]
     def search_relevant_catalogs(self, query: str, top_k: int = 3) -> List[CatalogSearchResult]:
         """Search for the most relevant catalogs based on query"""
         if not self.catalogs:

@@ -8,7 +8,7 @@
 # from models import PDFMetadata
 # from repositories import CatalogRepository
 # from services import GeminiService, CatalogService
-# from services.improved_agent_service import ImprovedAgentService
+# from services.improved_agent_service import OptimizedAgentService
 # import nest_asyncio
 
 # # Apply nest_asyncio for Streamlit compatibility
@@ -19,7 +19,7 @@
 # logger = logging.getLogger(__name__)
 
 # class CatalogSystemFacade:
-#     """Main facade for the improved catalog system"""
+#     """Optimized facade that eliminates redundant processing"""
     
 #     def __init__(self, config: Config):
 #         self.config = config
@@ -32,57 +32,60 @@
 #         self.repository = CatalogRepository(config.storage_dir)
 #         self.gemini_service = GeminiService(config.gemini_api_key)
         
-#         # Initialize catalog service for metadata management
+#         # Initialize catalog service for basic metadata (lightweight)
 #         self.catalog_service = CatalogService(self.repository, self.gemini_service)
         
-#         # Initialize improved agent service
-#         self.agent_service = ImprovedAgentService(self.catalog_service, self.gemini_service)
+#         # Initialize optimized agent service (single processing)
+#         self.agent_service = OptimizedAgentService(self.catalog_service, self.gemini_service)
         
-#         # CRITICAL FIX: Load existing catalogs into the agent service
+#         # Load existing catalogs efficiently
 #         self._initialize_existing_catalogs()
         
-#         logger.info("Improved catalog system initialized successfully")
+#         logger.info("Optimized catalog system initialized successfully")
     
 #     def _initialize_existing_catalogs(self):
-#         """Initialize agent service with existing catalogs"""
+#         """Initialize existing catalogs without reprocessing"""
 #         try:
 #             existing_catalogs = self.repository.load_metadata()
 #             logger.info(f"Found {len(existing_catalogs)} existing catalogs")
             
-#             # Initialize each existing catalog in the agent service
+#             # Only initialize processed catalogs
 #             for filename, metadata in existing_catalogs.items():
 #                 if metadata.is_processed and metadata.file_path:
-#                     logger.info(f"Initializing existing catalog: {filename}")
-#                     # Run async initialization synchronously
-#                     asyncio.run(self.agent_service.initialize_catalog(filename, metadata.file_path))
+#                     logger.info(f"Loading existing catalog: {filename}")
+#                     # Initialize in background to avoid blocking
+#                     asyncio.create_task(
+#                         self.agent_service.initialize_catalog(filename, metadata.file_path)
+#                     )
                     
 #         except Exception as e:
 #             logger.error(f"Error initializing existing catalogs: {e}")
     
 #     async def add_catalog(self, pdf_file) -> str:
-#         """Add a new catalog using the improved agent system"""
+#         """Add catalog with single comprehensive processing"""
 #         try:
 #             filename = pdf_file.name
-#             logger.info(f"Adding catalog with improved system: {filename}")
+#             logger.info(f"Adding catalog with optimized single-pass processing: {filename}")
             
 #             # Check if already processed
 #             existing_catalogs = self.repository.load_metadata()
 #             if filename in existing_catalogs and existing_catalogs[filename].is_processed:
-#                 # IMPORTANT: Still initialize in agent service if not already done
-#                 await self.agent_service.initialize_catalog(filename, existing_catalogs[filename].file_path)
+#                 # Still need to initialize in agent service if not already done
+#                 if filename not in self.agent_service.unified_agents:
+#                     await self.agent_service.initialize_catalog(filename, existing_catalogs[filename].file_path)
 #                 return f"✅ Catalog already processed: {filename}"
             
 #             # Save PDF file
 #             file_path = self.repository.save_pdf(pdf_file, filename)
             
-#             # Create basic metadata for storage
+#             # Create minimal metadata for storage (no processing yet)
 #             from utils import pdf_to_images
 #             images = pdf_to_images(file_path, self.config.dpi)
             
 #             basic_metadata = PDFMetadata(
 #                 filename=filename,
 #                 file_path=file_path,
-#                 summary="Processing with improved agents...",
+#                 summary="Processing with optimized single-pass system...",
 #                 categories=["processing"],
 #                 keywords=[],
 #                 product_types=[],
@@ -98,32 +101,45 @@
 #             catalogs[filename] = basic_metadata
 #             self.repository.save_metadata(catalogs)
             
-#             # CRITICAL: Initialize with improved agent system
-#             logger.info(f"Initializing agent system for: {filename}")
+#             # SINGLE COMPREHENSIVE PROCESSING
+#             logger.info(f"Starting single-pass comprehensive processing: {filename}")
 #             await self.agent_service.initialize_catalog(filename, file_path)
             
-#             # Update metadata as processed
+#             # Update metadata as fully processed
 #             basic_metadata.is_processed = True
-#             basic_metadata.summary = "Processed with improved agent system - ready for intelligent search"
+#             basic_metadata.summary = "Processed with optimized single-pass system - ready for intelligent search"
+            
+#             # Get enhanced metadata from agent if available
+#             if filename in self.agent_service.unified_agents:
+#                 agent = self.agent_service.unified_agents[filename]
+#                 if agent.is_initialized:
+#                     summary_data = agent.get_summary_data()
+#                     basic_metadata.summary = summary_data.get('detailed_summary', basic_metadata.summary)
+#                     basic_metadata.categories = summary_data.get('product_categories', ['general'])
+#                     basic_metadata.keywords = summary_data.get('searchable_keywords', [])
+#                     basic_metadata.product_types = summary_data.get('product_types', [])
+#                     basic_metadata.brand_names = summary_data.get('brands', [])
+#                     basic_metadata.product_names = summary_data.get('all_products', [])
+            
 #             catalogs[filename] = basic_metadata
 #             self.repository.save_metadata(catalogs)
             
 #             # Refresh catalog service data
 #             self.catalog_service.catalogs = self.repository.load_metadata()
             
-#             logger.info(f"Successfully processed catalog: {filename}")
-#             return f"✅ Successfully processed catalog with improved agents: {filename}"
+#             logger.info(f"Successfully processed catalog with single pass: {filename}")
+#             return f"✅ Successfully processed catalog with optimized single-pass system: {filename}"
             
 #         except Exception as e:
 #             logger.error(f"Error adding catalog: {str(e)}")
 #             return f"❌ Error adding catalog: {str(e)}"
     
 #     async def process_query(self, query: str) -> str:
-#         """Process a user query using improved agents"""
+#         """Process query using optimized system"""
 #         try:
-#             logger.info(f"Processing query with improved system: {query}")
+#             logger.info(f"Processing query with optimized system: {query}")
             
-#             # Check if we have any catalogs in the agent service
+#             # Check if we have any ready agents
 #             if self.agent_service.get_summary_count() == 0:
 #                 return "No catalogs available for search. Please upload some PDF catalogs first."
                 
@@ -139,19 +155,19 @@
 #         if not catalogs:
 #             return "No catalogs available in the library."
         
-#         overview = f"**📚 Improved Catalog Library Overview**\n\n"
+#         overview = f"**📚 Optimized Catalog Library Overview**\n\n"
 #         overview += f"Total Catalogs: {len(catalogs)}\n"
-#         overview += f"Summary Agents: {self.agent_service.get_summary_count()}\n"
-#         overview += f"Detailed Agents: {self.agent_service.get_agent_count()}\n\n"
+#         overview += f"Ready Agents: {self.agent_service.get_summary_count()}\n"
+#         overview += f"Processing Efficiency: Single-Pass ⚡\n\n"
         
 #         for filename, metadata in catalogs.items():
 #             overview += f"📄 **{filename}**\n"
 #             if metadata.is_processed:
-#                 overview += f"   • ✅ Processed with improved agents\n"
-#                 overview += f"   • 🤖 Intelligent search ready\n"
-#                 overview += f"   • 🎯 High-accuracy product matching\n"
+#                 overview += f"   • ✅ Optimized single-pass processing complete\n"
+#                 overview += f"   • 🚀 Zero redundancy system\n"
+#                 overview += f"   • 🎯 Instant search ready\n"
 #             else:
-#                 overview += f"   • ⏳ Processing with agents...\n"
+#                 overview += f"   • ⏳ Single-pass processing in progress...\n"
 #             overview += f"   • Pages: {metadata.page_count}\n"
 #             if metadata.processing_date:
 #                 overview += f"   • Processed: {metadata.processing_date.strftime('%Y-%m-%d %H:%M')}\n"
@@ -169,7 +185,9 @@
 #             "processed_catalogs": processed_count,
 #             "summary_agents": self.agent_service.get_summary_count(),
 #             "detailed_agents": self.agent_service.get_agent_count(),
-#             "system_ready": self.agent_service.get_summary_count() > 0  # FIXED: Check agent service, not just processed count
+#             "ready_agents": self.agent_service.get_summary_count(),
+#             "processing_efficiency": "Single-Pass",
+#             "system_ready": self.agent_service.get_summary_count() > 0
 #         }
     
 #     def get_catalog_count(self) -> int:
@@ -177,27 +195,29 @@
 #         return len(self.catalog_service.get_all_catalogs())
     
 #     def get_agent_count(self) -> int:
-#         """Get number of active detailed agents"""
+#         """Get number of active agents"""
 #         return self.agent_service.get_agent_count()
     
 #     def get_summary_count(self) -> int:
-#         """Get number of summary agents"""
+#         """Get number of ready catalogs"""
 #         return self.agent_service.get_summary_count()
     
 #     def refresh_orchestrator(self):
-#         """Refresh orchestrator (not needed in improved system)"""
-#         logger.info("Orchestrator refresh requested - improved system handles this automatically")
+#         """Refresh not needed in optimized system"""
+#         logger.info("Orchestrator refresh requested - optimized system auto-manages")
 #         pass
 
 # # Main entry point for running the Streamlit app
 # def main():
 #     """Main entry point"""
-#     from ui import create_streamlit_app
+#     from ui.streamlit_app import create_streamlit_app
 #     create_streamlit_app()
 
 # if __name__ == "__main__":
 #     main()
 
+
+# main.py - Gemini-Only Agent System
 import asyncio
 import logging
 from typing import Dict
@@ -208,7 +228,7 @@ from config import Config
 from models import PDFMetadata
 from repositories import CatalogRepository
 from services import GeminiService, CatalogService
-from services.improved_agent_service import OptimizedAgentService
+from services.gemini_agent_service import GeminiAgentService
 import nest_asyncio
 
 # Apply nest_asyncio for Streamlit compatibility
@@ -218,130 +238,122 @@ nest_asyncio.apply()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class OptimizedCatalogSystemFacade:
-    """Optimized facade that eliminates redundant processing"""
+class GeminiCatalogSystemFacade:
+    """Main facade for the Gemini Agent-powered catalog system"""
     
     def __init__(self, config: Config):
         self.config = config
         
-        # Validate configuration
-        if not config.validate():
-            raise ValueError("Invalid configuration: missing API keys")
+        # Validate configuration (only Gemini needed now)
+        if not config.gemini_api_key:
+            raise ValueError("Gemini API key is required for all operations")
         
         # Initialize core services
         self.repository = CatalogRepository(config.storage_dir)
         self.gemini_service = GeminiService(config.gemini_api_key)
         
-        # Initialize catalog service for basic metadata (lightweight)
+        # Initialize catalog service for metadata management
         self.catalog_service = CatalogService(self.repository, self.gemini_service)
         
-        # Initialize optimized agent service (single processing)
-        self.agent_service = OptimizedAgentService(self.catalog_service, self.gemini_service)
+        # Initialize Gemini agent service (replaces OpenAI agents)
+        self.agent_service = GeminiAgentService(self.catalog_service, self.gemini_service)
         
-        # Load existing catalogs efficiently
+        # Load existing catalogs into the agent service
         self._initialize_existing_catalogs()
         
-        logger.info("Optimized catalog system initialized successfully")
+        logger.info("Gemini Agent-powered catalog system initialized successfully")
     
     def _initialize_existing_catalogs(self):
-        """Initialize existing catalogs without reprocessing"""
+        """Initialize agent service with existing catalogs"""
         try:
             existing_catalogs = self.repository.load_metadata()
             logger.info(f"Found {len(existing_catalogs)} existing catalogs")
             
-            # Only initialize processed catalogs
+            # Initialize each existing catalog in the agent service
             for filename, metadata in existing_catalogs.items():
                 if metadata.is_processed and metadata.file_path:
-                    logger.info(f"Loading existing catalog: {filename}")
-                    # Initialize in background to avoid blocking
+                    logger.info(f"Initializing existing catalog with Gemini agent: {filename}")
+                    # Run async initialization
                     asyncio.create_task(
-                        self.agent_service.initialize_catalog(filename, metadata.file_path)
+                        self.agent_service.get_catalog_agent(filename)
                     )
                     
         except Exception as e:
             logger.error(f"Error initializing existing catalogs: {e}")
     
     async def add_catalog(self, pdf_file) -> str:
-        """Add catalog with single comprehensive processing"""
+        """Add a new catalog using Gemini agents"""
         try:
             filename = pdf_file.name
-            logger.info(f"Adding catalog with optimized single-pass processing: {filename}")
+            logger.info(f"Adding catalog with Gemini agent system: {filename}")
             
             # Check if already processed
             existing_catalogs = self.repository.load_metadata()
             if filename in existing_catalogs and existing_catalogs[filename].is_processed:
-                # Still need to initialize in agent service if not already done
-                if filename not in self.agent_service.unified_agents:
-                    await self.agent_service.initialize_catalog(filename, existing_catalogs[filename].file_path)
+                # Still initialize Gemini agent if not done
+                if filename not in self.agent_service.catalog_agents:
+                    await self.agent_service.get_catalog_agent(filename)
                 return f"✅ Catalog already processed: {filename}"
             
             # Save PDF file
             file_path = self.repository.save_pdf(pdf_file, filename)
             
-            # Create minimal metadata for storage (no processing yet)
+            # Create basic metadata for storage
             from utils import pdf_to_images
             images = pdf_to_images(file_path, self.config.dpi)
             
-            basic_metadata = PDFMetadata(
+            # Generate enhanced metadata using Gemini
+            metadata_dict = self.gemini_service.generate_metadata(images, filename)
+            
+            # Create comprehensive metadata
+            catalog_metadata = PDFMetadata(
                 filename=filename,
                 file_path=file_path,
-                summary="Processing with optimized single-pass system...",
-                categories=["processing"],
-                keywords=[],
-                product_types=[],
-                brand_names=[],
-                product_names=[],
+                summary=metadata_dict.get("summary", f"Gemini agent-powered catalog: {filename}"),
+                categories=metadata_dict.get("categories", ["general"]),
+                keywords=metadata_dict.get("keywords", []),
+                product_types=metadata_dict.get("product_types", []),
+                brand_names=metadata_dict.get("brand_names", []),
+                product_names=metadata_dict.get("product_names", []),
                 page_count=len(images),
                 processing_date=datetime.now(),
                 is_processed=False
             )
             
-            # Store basic metadata
+            # Store metadata
             catalogs = self.repository.load_metadata()
-            catalogs[filename] = basic_metadata
+            catalogs[filename] = catalog_metadata
             self.repository.save_metadata(catalogs)
             
-            # SINGLE COMPREHENSIVE PROCESSING
-            logger.info(f"Starting single-pass comprehensive processing: {filename}")
-            await self.agent_service.initialize_catalog(filename, file_path)
+            # Initialize Gemini agent (this does the heavy processing)
+            logger.info(f"Initializing Gemini agent for: {filename}")
+            await self.agent_service.get_catalog_agent(filename)
             
-            # Update metadata as fully processed
-            basic_metadata.is_processed = True
-            basic_metadata.summary = "Processed with optimized single-pass system - ready for intelligent search"
-            
-            # Get enhanced metadata from agent if available
-            if filename in self.agent_service.unified_agents:
-                agent = self.agent_service.unified_agents[filename]
-                if agent.is_initialized:
-                    summary_data = agent.get_summary_data()
-                    basic_metadata.summary = summary_data.get('detailed_summary', basic_metadata.summary)
-                    basic_metadata.categories = summary_data.get('product_categories', ['general'])
-                    basic_metadata.keywords = summary_data.get('searchable_keywords', [])
-                    basic_metadata.product_types = summary_data.get('product_types', [])
-                    basic_metadata.brand_names = summary_data.get('brands', [])
-                    basic_metadata.product_names = summary_data.get('all_products', [])
-            
-            catalogs[filename] = basic_metadata
+            # Update metadata as processed
+            catalog_metadata.is_processed = True
+            catalog_metadata.summary = "Processed with Gemini agents - ready for intelligent conversations"
+            catalogs[filename] = catalog_metadata
             self.repository.save_metadata(catalogs)
             
-            # Refresh catalog service data
+            # Refresh catalog service and orchestrator
             self.catalog_service.catalogs = self.repository.load_metadata()
+            self.agent_service.refresh_orchestrator()
             
-            logger.info(f"Successfully processed catalog with single pass: {filename}")
-            return f"✅ Successfully processed catalog with optimized single-pass system: {filename}"
+            logger.info(f"Successfully processed catalog with Gemini agents: {filename}")
+            return f"✅ Successfully processed catalog with Gemini agents: {filename}"
             
         except Exception as e:
             logger.error(f"Error adding catalog: {str(e)}")
             return f"❌ Error adding catalog: {str(e)}"
     
     async def process_query(self, query: str) -> str:
-        """Process query using optimized system"""
+        """Process a user query using Gemini agents"""
         try:
-            logger.info(f"Processing query with optimized system: {query}")
+            logger.info(f"Processing query with Gemini agent system: {query}")
             
-            # Check if we have any ready agents
-            if self.agent_service.get_summary_count() == 0:
-                return "No catalogs available for search. Please upload some PDF catalogs first."
+            # Check if we have any agents ready
+            if self.agent_service.get_agent_count() == 0:
+                return "No Gemini agents available for search. Please upload some PDF catalogs first."
                 
             return await self.agent_service.process_query(query)
         except Exception as e:
@@ -349,25 +361,27 @@ class OptimizedCatalogSystemFacade:
             return f"❌ Error processing query: {str(e)}"
     
     def get_catalog_overview(self) -> str:
-        """Get overview of all catalogs"""
+        """Get overview of all catalogs with Gemini agent status"""
         catalogs = self.catalog_service.get_all_catalogs()
         
         if not catalogs:
             return "No catalogs available in the library."
         
-        overview = f"**📚 Optimized Catalog Library Overview**\n\n"
+        overview = f"**📚 Gemini Agent-Powered Catalog Library**\n\n"
         overview += f"Total Catalogs: {len(catalogs)}\n"
-        overview += f"Ready Agents: {self.agent_service.get_summary_count()}\n"
-        overview += f"Processing Efficiency: Single-Pass ⚡\n\n"
+        overview += f"Active Gemini Agents: {self.agent_service.get_agent_count()}\n"
+        overview += f"Agent Model: Gemini-2.5-Flash\n\n"
         
         for filename, metadata in catalogs.items():
             overview += f"📄 **{filename}**\n"
             if metadata.is_processed:
-                overview += f"   • ✅ Optimized single-pass processing complete\n"
-                overview += f"   • 🚀 Zero redundancy system\n"
-                overview += f"   • 🎯 Instant search ready\n"
+                agent_status = "🤖 Active" if filename in self.agent_service.catalog_agents else "⏳ Initializing"
+                overview += f"   • ✅ Processed with Gemini agents\n"
+                overview += f"   • {agent_status} Gemini Agent\n"
+                overview += f"   • 🧠 Intelligent conversation ready\n"
+                overview += f"   • 🎯 Advanced product understanding\n"
             else:
-                overview += f"   • ⏳ Single-pass processing in progress...\n"
+                overview += f"   • ⏳ Processing with Gemini agents...\n"
             overview += f"   • Pages: {metadata.page_count}\n"
             if metadata.processing_date:
                 overview += f"   • Processed: {metadata.processing_date.strftime('%Y-%m-%d %H:%M')}\n"
@@ -383,9 +397,10 @@ class OptimizedCatalogSystemFacade:
         return {
             "total_catalogs": len(catalogs),
             "processed_catalogs": processed_count,
-            "ready_agents": self.agent_service.get_summary_count(),
-            "processing_efficiency": "Single-Pass",
-            "system_ready": self.agent_service.get_summary_count() > 0
+            "gemini_agents": self.agent_service.get_agent_count(),
+            "agent_model": "Gemini-2.5-Flash",
+            "system_ready": self.agent_service.get_agent_count() > 0,
+            "system_type": "Gemini Agents"
         }
     
     def get_catalog_count(self) -> int:
@@ -393,20 +408,20 @@ class OptimizedCatalogSystemFacade:
         return len(self.catalog_service.get_all_catalogs())
     
     def get_agent_count(self) -> int:
-        """Get number of active agents"""
+        """Get number of active Gemini agents"""
         return self.agent_service.get_agent_count()
     
     def get_summary_count(self) -> int:
-        """Get number of ready catalogs"""
+        """Get number of processed catalogs"""
         return self.agent_service.get_summary_count()
     
     def refresh_orchestrator(self):
-        """Refresh not needed in optimized system"""
-        logger.info("Orchestrator refresh requested - optimized system auto-manages")
-        pass
+        """Refresh orchestrator with updated catalog info"""
+        logger.info("Refreshing Gemini orchestrator agent")
+        self.agent_service.refresh_orchestrator()
 
 # Backward compatibility alias
-CatalogSystemFacade = OptimizedCatalogSystemFacade
+CatalogSystemFacade = GeminiCatalogSystemFacade
 
 # Main entry point for running the Streamlit app
 def main():

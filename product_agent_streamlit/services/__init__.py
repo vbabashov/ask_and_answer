@@ -6,9 +6,17 @@
 # __all__ = ['GeminiService', 'CatalogService', 'AgentService', 'CatalogAgent', 'OrchestratorAgent']
 
 # File: services/__init__.py
+# from .gemini_service import GeminiService
+# from .catalog_service import CatalogService
+# # from .agent_service import AgentService, CatalogAgent, OrchestratorAgent
+# from .improved_agent_service import OptimizedAgentService
+
+# __all__ = ['GeminiService', 'CatalogService', 'OptimizedAgentService']
+
+
+# File: services/__init__.py
 from .gemini_service import GeminiService
 from .catalog_service import CatalogService
-# from .agent_service import AgentService, CatalogAgent, OrchestratorAgent
-from .improved_agent_service import OptimizedAgentService
+from .gemini_agent_service import GeminiAgentService, GeminiCatalogAgent, GeminiOrchestratorAgent
 
-__all__ = ['GeminiService', 'CatalogService', 'OptimizedAgentService']
+__all__ = ['GeminiService', 'CatalogService', 'GeminiAgentService', 'GeminiCatalogAgent', 'GeminiOrchestratorAgent']
