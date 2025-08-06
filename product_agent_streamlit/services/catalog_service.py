@@ -73,6 +73,45 @@ class CatalogService:
         
         return "\n\n".join(summaries)
     
+    # def search_relevant_catalogs(self, query: str, top_k: int = 3) -> List[CatalogSearchResult]:
+    #     """Search for the most relevant catalogs based on query"""
+    #     if not self.catalogs:
+    #         return []
+        
+    #     try:
+    #         logger.info(f"Searching catalogs for query: {query}")
+            
+    #         # Get catalog summaries
+    #         catalog_summaries = self.get_catalog_summaries()
+            
+    #         # Search using Gemini
+    #         rankings = self.gemini_service.search_catalogs(query, catalog_summaries)
+            
+    #         results = []
+    #         for item in rankings:
+    #             catalog_name = item.get('catalog')
+    #             score = item.get('relevance_score', 0)
+    #             reason = item.get('reason', 'No reason provided')
+                
+    #             if catalog_name in self.catalogs:
+    #                 results.append(CatalogSearchResult(
+    #                     catalog_name=catalog_name,
+    #                     relevance_score=float(score),
+    #                     reason=reason
+    #                 ))
+            
+    #         # Sort by relevance score and return top_k
+    #         results.sort(key=lambda x: x.relevance_score, reverse=True)
+    #         print("THIS IS THE FINAL RELEVANT CATALOGS", results)
+    #         return results[:top_k]
+            
+    #     except Exception as e:
+    #         logger.error(f"Error in catalog search: {e}")
+    #         # Fallback: return all catalogs with equal scores
+    #         return [
+    #             CatalogSearchResult(filename, 5.0, "Fallback result")
+    #             for filename in list(self.catalogs.keys())[:top_k]
+    #         ]
     def search_relevant_catalogs(self, query: str, top_k: int = 3) -> List[CatalogSearchResult]:
         """Search for the most relevant catalogs based on query"""
         if not self.catalogs:
@@ -81,28 +120,22 @@ class CatalogService:
         try:
             logger.info(f"Searching catalogs for query: {query}")
             
-            # Get catalog summaries
+            # First do local keyword matching as a baseline
+            local_scores = self._calculate_local_scores(query)
+            
+            # Get catalog summaries for Gemini
             catalog_summaries = self.get_catalog_summaries()
             
-            # Search using Gemini
-            rankings = self.gemini_service.search_catalogs(query, catalog_summaries)
+            # Get Gemini scores
+            gemini_rankings = self.gemini_service.search_catalogs(query, catalog_summaries)
             
-            results = []
-            for item in rankings:
-                catalog_name = item.get('catalog')
-                score = item.get('relevance_score', 0)
-                reason = item.get('reason', 'No reason provided')
-                
-                if catalog_name in self.catalogs:
-                    results.append(CatalogSearchResult(
-                        catalog_name=catalog_name,
-                        relevance_score=float(score),
-                        reason=reason
-                    ))
+            # Combine scores
+            results = self._combine_scores(local_scores, gemini_rankings)
             
             # Sort by relevance score and return top_k
             results.sort(key=lambda x: x.relevance_score, reverse=True)
-            print("THIS IS THE FINAL RELEVANT CATALOGS", results)
+            logger.info(f"Final catalog ranking: {[(r.catalog_name, r.relevance_score) for r in results[:top_k]]}")
+            
             return results[:top_k]
             
         except Exception as e:
@@ -112,7 +145,81 @@ class CatalogService:
                 CatalogSearchResult(filename, 5.0, "Fallback result")
                 for filename in list(self.catalogs.keys())[:top_k]
             ]
+
+    def _calculate_local_scores(self, query: str) -> Dict[str, float]:
+        """Calculate local keyword-based scores"""
+        query_terms = query.lower().split()
+        scores = {}
+        
+        for filename, metadata in self.catalogs.items():
+            score = 0.0
+            
+            # Check keywords (highest weight)
+            for keyword in metadata.keywords:
+                for term in query_terms:
+                    if term in keyword.lower():
+                        score += 3.0
+            
+            # Check product names (high weight)
+            for product_name in metadata.product_names:
+                for term in query_terms:
+                    if term in product_name.lower():
+                        score += 2.5
+            
+            # Check categories (medium weight)
+            for category in metadata.categories:
+                for term in query_terms:
+                    if term in category.lower():
+                        score += 2.0
+            
+            # Check summary (low weight)
+            summary_lower = metadata.summary.lower()
+            for term in query_terms:
+                if term in summary_lower:
+                    score += 1.0
+            
+            scores[filename] = min(score, 10.0)  # Cap at 10
+            logger.info(f"Local score for {filename}: {score}")
+        
+        return scores
+
+    def _combine_scores(self, local_scores: Dict[str, float], gemini_rankings: List[Dict]) -> List[CatalogSearchResult]:
+        """Combine local and Gemini scores"""
+        results = []
+        
+        # Create a map of Gemini scores
+        gemini_scores = {item.get('catalog', ''): item.get('relevance_score', 0) for item in gemini_rankings}
+        
+        for filename in self.catalogs.keys():
+            local_score = local_scores.get(filename, 0.0)
+            gemini_score = gemini_scores.get(filename, 0.0)
+            
+            # Weighted combination (60% local, 40% Gemini)
+            combined_score = (0.6 * local_score) + (0.4 * gemini_score)
+            
+            reason = f"Local: {local_score:.1f}, Gemini: {gemini_score:.1f}"
+            
+            results.append(CatalogSearchResult(
+                catalog_name=filename,
+                relevance_score=combined_score,
+                reason=reason
+            ))
+        
+        return results
     
+    def _preprocess_query(self, query: str) -> List[str]:
+        """Extract key terms from user query"""
+        import re
+        
+        # Remove common words
+        stop_words = {'what', 'is', 'the', 'how', 'do', 'does', 'can', 'will', 'would', 'should', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'about'}
+        
+        # Extract meaningful terms
+        terms = re.findall(r'\b\w+\b', query.lower())
+        key_terms = [term for term in terms if term not in stop_words and len(term) > 2]
+        
+        logger.info(f"Extracted key terms from '{query}': {key_terms}")
+        return key_terms
     def get_catalog_by_name(self, catalog_name: str) -> Optional[PDFMetadata]:
         """Get catalog metadata by name"""
         return self.catalogs.get(catalog_name)

@@ -44,38 +44,39 @@ class GeminiService:
         except Exception as e:
             logger.error(f"Error analyzing batch starting at page {batch_start + 1}: {str(e)}")
             return f"Error analyzing batch starting at page {batch_start + 1}: {str(e)}"
-
+    
     def generate_metadata(self, images: List[Image.Image], filename: str) -> Dict[str, Any]:
         """Generate metadata for a PDF catalog"""
         sample_images = images[:min(8, len(images))]
         
         metadata_prompt = """
-        Analyze this product catalog thoroughly and provide metadata in the following JSON format:
+        Analyze this product catalog and extract comprehensive metadata. Focus on being VERY SPECIFIC with product types and keywords.
+
+        Return JSON in this exact format:
         {
-            "summary": "Detailed 3-4 sentence summary of what this catalog contains, including specific product types and brands",
-            "categories": ["category1", "category2", "category3", "category4", "category5"],
-            "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
-            "product_types": ["specific_product_type1", "specific_product_type2", "specific_product_type3"],
-            "main_business_type": "detailed description of business type",
-            "brand_names": ["brand1", "brand2", "brand3"],
-            "product_names": ["specific_product_name1", "specific_product_name2", "specific_product_name3"]
+            "summary": "Detailed summary of catalog contents, mentioning specific product types, models, and key features",
+            "categories": ["specific_category1", "specific_category2", "specific_category3"],
+            "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8", "keyword9", "keyword10"],
+            "product_types": ["specific_product_type1", "specific_product_type2"],
+            "main_business_type": "business description",
+            "brand_names": ["brand1", "brand2"],
+            "product_names": ["full_product_name1", "full_product_name2"]
         }
-        
-        Focus on:
-        - Exact product names and model numbers
-        - Specific product categories (e.g., "glass kettles", "espresso machines", "blenders")
-        - Brand names and manufacturers
-        - Product features and characteristics
-        - Target market or industry
-        - Key specializations
-        
-        Be very specific with product types and names. Avoid generic terms.
-        Provide only the JSON response, no other text.
+
+        IMPORTANT INSTRUCTIONS:
+        - Extract ALL visible product names, model numbers, and variations
+        - Include technical terms (voltage, power, speed, capacity, etc.)
+        - Include product features (high-velocity, hybrid, electric, manual, etc.)
+        - Be specific: use "high-velocity fan" not just "fan"
+        - Include synonyms: if you see "fan", also add "cooling", "air circulation"
+        - Include specifications: "110V", "220V", "variable speed", etc.
+
+        Return ONLY the JSON, no other text.
         """
         
         try:
             response = self.model.generate_content([metadata_prompt] + sample_images)
-            print("This is the response from the extracted content", response.text)
+            logger.info(f"Raw metadata response for {filename}: {response.text[:500]}...")
             return json.loads(response.text.strip())
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"Error generating metadata for {filename}: {str(e)}")
@@ -88,33 +89,133 @@ class GeminiService:
                 "brand_names": [],
                 "product_names": []
             }
+    # def generate_metadata(self, images: List[Image.Image], filename: str) -> Dict[str, Any]:
+    #     """Generate metadata for a PDF catalog"""
+    #     sample_images = images[:min(8, len(images))]
+        
+    #     metadata_prompt = """
+    #     Analyze this product catalog thoroughly and provide metadata in the following JSON format:
+    #     {
+    #         "summary": "Detailed 3-4 sentence summary of what this catalog contains, including specific product types and brands",
+    #         "categories": ["category1", "category2", "category3", "category4", "category5"],
+    #         "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5", "keyword6", "keyword7", "keyword8"],
+    #         "product_types": ["specific_product_type1", "specific_product_type2", "specific_product_type3"],
+    #         "main_business_type": "detailed description of business type",
+    #         "brand_names": ["brand1", "brand2", "brand3"],
+    #         "product_names": ["specific_product_name1", "specific_product_name2", "specific_product_name3"]
+    #     }
+        
+    #     Focus on:
+    #     - Exact product names and model numbers
+    #     - Specific product categories (e.g., "glass kettles", "espresso machines", "blenders")
+    #     - Brand names and manufacturers
+    #     - Product features and characteristics
+    #     - Target market or industry
+    #     - Key specializations
+        
+    #     Be very specific with product types and names. Avoid generic terms.
+    #     Provide only the JSON response, no other text.
+    #     """
+        
+    #     try:
+    #         response = self.model.generate_content([metadata_prompt] + sample_images)
+    #         print("This is the response from the extracted content", response.text)
+    #         return json.loads(response.text.strip())
+    #     except (json.JSONDecodeError, Exception) as e:
+    #         logger.warning(f"Error generating metadata for {filename}: {str(e)}")
+    #         return {
+    #             "summary": f"Product catalog: {filename}",
+    #             "categories": ["general"],
+    #             "keywords": [filename.replace('.pdf', '').lower()],
+    #             "product_types": ["products"],
+    #             "main_business_type": "retail",
+    #             "brand_names": [],
+    #             "product_names": []
+    #         }
     
+    # def search_catalogs(self, query: str, catalog_summaries: str) -> List[Dict[str, Any]]:
+    #     """Search for relevant catalogs based on query"""
+    #     search_prompt = f"""
+    #     You are a catalog relevance expert. Given this user query: "{query}"
+        
+    #     And these available catalogs:
+    #     {catalog_summaries}
+        
+    #     TASK: Rank ALL catalogs by relevance to the query (0-10 scale, 10 being most relevant).
+        
+    #     SCORING GUIDELINES:
+    #     - 10: Perfect match (exact product mentioned in catalog)
+    #     - 8-9: Very high match (similar products, same category)
+    #     - 6-7: Good match (related products or category)
+    #     - 4-5: Moderate match (some relevance)
+    #     - 1-3: Low match (minimal relevance)
+    #     - 0: No match (completely unrelated)
+        
+    #     Return ONLY a JSON array with this exact format:
+    #     [
+    #         {{"catalog": "exact_filename.pdf", "relevance_score": 9, "reason": "Contains Temperature Glass Kettle products"}},
+    #         {{"catalog": "exact_filename2.pdf", "relevance_score": 2, "reason": "Only contains espresso machines, not kettles"}}
+    #     ]
+        
+    #     Include ALL catalogs in the response with their scores.
+    #     Return only the JSON, no other text.
+    #     """
+        
+    #     try:
+    #         response = self.model.generate_content(search_prompt)
+    #         response_text = response.text.strip()
+            
+    #         # Clean JSON response
+    #         if response_text.startswith('```json'):
+    #             response_text = response_text[7:]
+    #         if response_text.endswith('```'):
+    #             response_text = response_text[:-3]
+    #         print("THIS IS  THE SCORE RESPONSE", response_text )
+    #         return json.loads(response_text.strip())
+
+    #     except (json.JSONDecodeError, Exception) as e:
+    #         logger.error(f"Error in catalog search: {e}")
+    #         return []
     def search_catalogs(self, query: str, catalog_summaries: str) -> List[Dict[str, Any]]:
         """Search for relevant catalogs based on query"""
         search_prompt = f"""
-        You are a catalog relevance expert. Given this user query: "{query}"
-        
-        And these available catalogs:
+        TASK: You are a product catalog expert. Analyze this user query and rank ALL catalogs by relevance.
+
+        USER QUERY: "{query}"
+
+        AVAILABLE CATALOGS:
         {catalog_summaries}
-        
-        TASK: Rank ALL catalogs by relevance to the query (0-10 scale, 10 being most relevant).
-        
-        SCORING GUIDELINES:
-        - 10: Perfect match (exact product mentioned in catalog)
-        - 8-9: Very high match (similar products, same category)
-        - 6-7: Good match (related products or category)
-        - 4-5: Moderate match (some relevance)
-        - 1-3: Low match (minimal relevance)
-        - 0: No match (completely unrelated)
-        
-        Return ONLY a JSON array with this exact format:
+
+        SCORING INSTRUCTIONS:
+        Rate each catalog 0-10 based on how well it matches the query:
+
+        10: Perfect match - catalog contains the exact product mentioned
+        8-9: Very high - catalog has similar/related products in same category
+        6-7: Good match - catalog has products in related category
+        4-5: Some relevance - catalog might have tangentially related items
+        1-3: Low relevance - minimal connection to query
+        0: No relevance - completely unrelated
+
+        SPECIFIC MATCHING CRITERIA:
+        - Match specific product names/models mentioned in query
+        - Match product categories (e.g., "fan" matches "fans", "cooling", "air circulation")
+        - Match technical specifications (e.g., "voltage" matches electrical products)
+        - Match brands and manufacturers
+        - Match use cases and applications
+
+        EXAMPLES:
+        Query: "Hybrid High-Velocity Fan voltage" 
+        - Fan catalog: 10 (exact match)
+        - Kitchen appliance catalog: 2 (unrelated)
+        - Electronics catalog: 4 (voltage is electrical term)
+
+        Return ONLY this JSON format (no extra text):
         [
-            {{"catalog": "exact_filename.pdf", "relevance_score": 9, "reason": "Contains Temperature Glass Kettle products"}},
-            {{"catalog": "exact_filename2.pdf", "relevance_score": 2, "reason": "Only contains espresso machines, not kettles"}}
+            {{"catalog": "exact_filename.pdf", "relevance_score": 9, "reason": "Contains high-velocity fan products"}},
+            {{"catalog": "exact_filename2.pdf", "relevance_score": 2, "reason": "Only kitchen slicers, no fans"}}
         ]
-        
-        Include ALL catalogs in the response with their scores.
-        Return only the JSON, no other text.
+
+        Include ALL catalogs. Be strict with scoring - don't give high scores unless there's real relevance.
         """
         
         try:
@@ -126,11 +227,12 @@ class GeminiService:
                 response_text = response_text[7:]
             if response_text.endswith('```'):
                 response_text = response_text[:-3]
-            print("THIS IS  THE SCORE RESPONSE", response_text )
+                
+            logger.info(f"Gemini catalog scores: {response_text}")
             return json.loads(response_text.strip())
 
         except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Error in catalog search: {e}")
+            logger.error(f"Error in Gemini catalog search: {e}")
             return []
 
     def consolidate_catalog_content(self, full_analysis: str, catalog_name: str) -> str:

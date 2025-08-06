@@ -62,10 +62,11 @@ class OrchestratorAgent:
         """Process user query and return response with selected catalog"""
         try:
             logger.info(f"Processing query: {query}")
-            
+        
             # Find relevant catalogs
             relevant_catalogs = self.catalog_service.search_relevant_catalogs(query, top_k=3)
-            print("RELEVANT CATALOGS", relevant_catalogs)
+            logger.info(f"Catalog scores: {[(c.catalog_name, c.relevance_score) for c in relevant_catalogs]}")
+            
             if not relevant_catalogs:
                 return "No suitable catalog found for your query.", None
             
