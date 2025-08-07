@@ -7,7 +7,8 @@ import os
 import agents
 from openai import AsyncAzureOpenAI
 
-from src.prompts import REACT_INSTRUCTIONS
+
+from src.utils.functions import*
 from src.utils.langfuse.shared_client import langfuse_client
 
 from dotenv import load_dotenv
@@ -31,6 +32,7 @@ set_tracing_disabled(True)
 class AgentOutput(BaseModel):
     final_output: str
     sourceUrl: list[str]
+ 
     
 def structured_output(final_output: str, source_url: list[str]) -> AgentOutput:
     """Structure the output from the agent into a AgentOutput model."""
@@ -55,10 +57,11 @@ executor_agent = Agent(
     model_settings=ModelSettings(temperature=0),
 )
 
+planner_instructions = read_instructions("instructions.md")
 # Main Agent: Orchestrator
 main_agent = Agent(
     name="MainAgent",
-    instructions=REACT_INSTRUCTIONS,
+    instructions=planner_instructions,
     # Allow the planner agent to invoke the worker agent.
     # The long context provided to the worker agent is hidden from the main agent.
     tools=[
