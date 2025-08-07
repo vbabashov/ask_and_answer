@@ -1,9 +1,14 @@
 """
-Individual catalog agent for processing specific catalogs
+Enhanced individual catalog agent with better product search and initialization
+Key improvements:
+1. Better catalog content analysis and storage
+2. Improved product search with exact matching
+3. Enhanced agent instructions for better responses
+4. Better error handling and fallbacks
 """
 
 from typing import List
-import agents  # Import the OpenAI agents package
+import agents
 from PIL import Image
 from openai import AsyncOpenAI
 
@@ -12,29 +17,31 @@ from processors.pdf_processor import PDFCatalogProcessor
 from tools.catalog_tools import CatalogTools
 
 class PDFCatalogAgent:
-    """Individual catalog agent."""
+    """Enhanced individual catalog agent."""
     
     def __init__(self, gemini_api_key: str, openai_client: AsyncOpenAI, catalog_name: str):
         self.processor = PDFCatalogProcessor(gemini_api_key)
         self.openai_client = openai_client
         self.catalog_name = catalog_name
         self.catalog_data = ""
+        self.catalog_summary = ""
+        self.product_index = ""
         self.pdf_images = []
         self.tools = None
         self.agent = None
         
     async def initialize_catalog(self, pdf_path: str) -> None:
-        """Initialize catalog by processing PDF."""
+        """Enhanced catalog initialization with better content analysis."""
         try:
-            print(f"🔄 Processing PDF catalog: {self.catalog_name}...")
+            print(f"🔄 Initializing catalog agent for: {self.catalog_name}...")
             
             # Convert PDF to images
             self.pdf_images = self.processor.pdf_to_images(pdf_path)
             print(f"✅ Converted {len(self.pdf_images)} pages to images")
             
-            # Analyze catalog in batches
-            print("🔄 Analyzing catalog content...")
-            batch_size = 10  # Reduced batch size for better analysis
+            # Analyze catalog in smaller, focused batches
+            print("🔄 Analyzing catalog content in detail...")
+            batch_size = 8  # Smaller batches for better analysis
             all_analyses = []
             
             for i in range(0, len(self.pdf_images), batch_size):
@@ -42,121 +49,273 @@ class PDFCatalogAgent:
                 batch_num = i // batch_size + 1
                 total_batches = (len(self.pdf_images) + batch_size - 1) // batch_size
                 
-                print(f"Analyzing batch {batch_num}/{total_batches} ({len(batch)} pages)...")
-                analysis = self.processor.analyze_catalog_batch(batch, i)
+                print(f"Analyzing batch {batch_num}/{total_batches} (pages {i+1}-{min(i+batch_size, len(self.pdf_images))})...")
+                
+                # Enhanced batch analysis with specific focus
+                analysis = await self._analyze_batch_enhanced(batch, i)
                 all_analyses.append(f"=== PAGES {i+1}-{min(i+batch_size, len(self.pdf_images))} ===\n{analysis}")
             
-            # Combine analyses
-            full_analysis = "\n\n".join(all_analyses)
+            # Create comprehensive catalog knowledge base
+            print("🔄 Creating comprehensive catalog knowledge base...")
+            await self._create_catalog_knowledge_base(all_analyses)
             
-            # Create consolidated summary with enhanced product extraction
-            consolidation_prompt = f"""
-            Create a consolidated, well-organized, and highly searchable knowledge base for catalog {self.catalog_name}.
+            # Initialize tools with enhanced data
+            self.tools = CatalogTools(
+                self.catalog_data, 
+                self.pdf_images, 
+                self.processor, 
+                self.catalog_name,
+                self.product_index,
+                self.catalog_summary
+            )
             
-            IMPORTANT REQUIREMENTS:
-            1. Extract ALL product names, models, and variations
-            2. Create a comprehensive product index at the beginning
-            3. Organize by categories and product types
-            4. Include ALL specifications, prices, and features
-            5. Remove duplicates but keep all unique information
-            6. Make it easily searchable for any product query
+            # Create enhanced OpenAI Agent
+            await self._initialize_agent()
             
-            Original Analysis:
-            {full_analysis[:20000]}  # Increased limit for better consolidation
-            
-            Format as:
-            === PRODUCT INDEX ===
-            [List all products found with page references]
-            
-            === DETAILED CATALOG CONTENT ===
-            [Organized, searchable content]
-            """
-            
-            print("Creating consolidated catalog knowledge base...")
-            consolidated_response = self.processor.model.generate_content(consolidation_prompt)
-            self.catalog_data = consolidated_response.text
-            
-            print(f"Catalog data preview for {self.catalog_name}:")
-            print(self.catalog_data[:1000])
-            
-            # Initialize tools
-            self.tools = CatalogTools(self.catalog_data, self.pdf_images, self.processor, self.catalog_name)
-            
-            # Create OpenAI Agent - following your reference pattern
-            try:
-                self.agent = agents.Agent(
-                    name=f"PDF Catalog Assistant - {self.catalog_name}",
-                    instructions=f"""
-                    You are an expert product catalog assistant with comprehensive knowledge of the catalog: {self.catalog_name}
-                    
-                    You have access to the following tools:
-                    - search_products: Search for products by name, category, features, or price
-                    - get_product_details: Get detailed information about specific products
-                    - compare_products: Compare two products side by side
-                    - analyze_specific_pages: Analyze specific pages with focused attention
-                    - get_catalog_overview: Get an overview of the entire catalog
-                    
-                    Catalog Overview:
-                    {self.catalog_data[:3000]}...
-                    
-                    Your primary responsibilities:
-                    1. Answer questions about ANY product in this catalog
-                    2. Search and recommend products based on customer needs
-                    3. Provide detailed specifications and pricing
-                    4. Compare products and make recommendations
-                    5. Analyze specific pages for detailed information
-                    6. Help with product selection and purchasing decisions
-                    
-                    IMPORTANT GUIDELINES:
-                    - Always use the search_products tool for any product-related query
-                    - Be thorough in your searches - check for variations, similar products, and related items
-                    - If you don't find an exact match, look for similar or related products
-                    - Always mention the catalog name: {self.catalog_name}
-                    - Be helpful and accurate, referencing specific page numbers when available
-                    - If no products match the query, clearly state what products ARE available in this catalog
-                    
-                    Be conversational and friendly while providing comprehensive answers.
-                    """,
-                    tools=[
-                        agents.function_tool(self.tools.search_products),
-                        agents.function_tool(self.tools.get_product_details),
-                        agents.function_tool(self.tools.compare_products),
-                        agents.function_tool(self.tools.analyze_specific_pages),
-                        agents.function_tool(self.tools.get_catalog_overview),
-                    ],
-                    model=agents.OpenAIChatCompletionsModel(
-                        model=AGENT_LLM_NAME, 
-                        openai_client=self.openai_client
-                    ),
-                )
-                print(f"✅ Agent initialized for catalog: {self.catalog_name}")
-            except Exception as e:
-                print(f"❌ Error initializing agent for {self.catalog_name}: {e}")
-                self.agent = None
-            
-            print(f"✅ Catalog {self.catalog_name} initialized! {len(self.pdf_images)} pages processed.")
+            print(f"✅ Catalog agent for {self.catalog_name} fully initialized!")
+            print(f"   - {len(self.pdf_images)} pages processed")
+            print(f"   - {len(self.product_index.split('\\n'))} products indexed")
+            print(f"   - Knowledge base size: {len(self.catalog_data)} characters")
             
         except Exception as e:
             raise Exception(f"Error initializing catalog {self.catalog_name}: {str(e)}")
     
+    async def _analyze_batch_enhanced(self, images: List[Image.Image], batch_start: int) -> str:
+        """Enhanced batch analysis with focused product extraction."""
+        analysis_prompt = f"""
+        Analyze pages {batch_start + 1} to {batch_start + len(images)} of catalog "{self.catalog_name}".
+        
+        EXTRACTION PRIORITIES (in order of importance):
+        
+        1. **PRODUCTS** (HIGHEST PRIORITY):
+           - Extract EVERY product name, including variations and models
+           - Record exact product titles as they appear
+           - Note all SKUs, model numbers, part numbers
+           - Include product descriptions and key features
+           - Record ALL pricing information (regular, sale, bulk, etc.)
+        
+        2. **SPECIFICATIONS**:
+           - Technical specifications for each product
+           - Dimensions, weights, capacities
+           - Performance metrics and ratings
+           - Compatibility information
+        
+        3. **ORGANIZATION**:
+           - Section headers and category names
+           - Page organization and layout structure
+           - Cross-references and related products
+        
+        4. **ADDITIONAL INFO**:
+           - Warranty information
+           - Installation/usage instructions
+           - Contact information for ordering
+        
+        **CRITICAL REQUIREMENTS:**
+        - Extract ALL visible text, including small print
+        - Be extremely thorough with product names
+        - Include every price you can find
+        - Note exact page numbers for reference
+        - Use consistent formatting for easy searching
+        
+        **FORMAT:**
+        Start with a detailed product list, then provide comprehensive content.
+        Make everything searchable and well-organized.
+        """
+        
+        try:
+            response = self.processor.model.generate_content([analysis_prompt] + images)
+            return response.text
+        except Exception as e:
+            return f"Error analyzing pages {batch_start + 1}-{batch_start + len(images)}: {str(e)}"
+    
+    async def _create_catalog_knowledge_base(self, all_analyses: List[str]) -> None:
+        """Create comprehensive, searchable catalog knowledge base."""
+        full_analysis = "\\n\\n".join(all_analyses)
+        
+        # Create product index
+        index_prompt = f"""
+        From this catalog analysis, create a comprehensive PRODUCT INDEX:
+        
+        {full_analysis[:25000]}  # Use more content for better indexing
+        
+        Create a searchable product index with:
+        1. **COMPLETE PRODUCT LIST** - every product found with exact names
+        2. **MODEL VARIATIONS** - all variants and configurations
+        3. **PRICING INDEX** - all prices found
+        4. **CATEGORY ORGANIZATION** - products grouped by type
+        5. **CROSS-REFERENCES** - related and similar products
+        
+        Format as:
+        === PRODUCT INDEX FOR {self.catalog_name} ===
+        
+        **QUICK PRODUCT LIST:**
+        - Product Name 1 (Model: XXX, Price: $XXX, Page: XX)
+        - Product Name 2 (Model: YYY, Price: $YYY, Page: XX)
+        ...
+        
+        **BY CATEGORY:**
+        Category 1:
+        - Detailed product entries...
+        
+        Make this extremely comprehensive and searchable.
+        """
+        
+        print("Creating product index...")
+        try:
+            index_response = self.processor.model.generate_content(index_prompt)
+            self.product_index = index_response.text
+        except Exception as e:
+            print(f"Error creating product index: {e}")
+            self.product_index = "Product index generation failed."
+        
+        # Create consolidated catalog data
+        consolidation_prompt = f"""
+        Create a comprehensive, searchable knowledge base for catalog: {self.catalog_name}
+        
+        Source Analysis:
+        {full_analysis[:30000]}  # Use maximum content
+        
+        **REQUIREMENTS:**
+        1. **COMPLETE PRODUCT DATABASE** - Every product with full details
+        2. **SEARCHABLE FORMAT** - Easy to find any product or information
+        3. **DETAILED SPECIFICATIONS** - All technical details preserved
+        4. **PRICING INFORMATION** - All prices and pricing tiers
+        5. **CROSS-REFERENCES** - Related products and alternatives
+        6. **PAGE REFERENCES** - Where to find each item
+        
+        **ORGANIZATION:**
+        === CATALOG: {self.catalog_name} ===
+        
+        === EXECUTIVE SUMMARY ===
+        [Brief overview of catalog contents and specialization]
+        
+        === COMPLETE PRODUCT DATABASE ===
+        [Every product with full details, organized for easy searching]
+        
+        === SPECIFICATIONS INDEX ===
+        [Technical details organized by product]
+        
+        === PRICING GUIDE ===
+        [All pricing information organized]
+        
+        **Make this the ultimate searchable reference for this catalog.**
+        Remove duplicates but keep ALL unique information.
+        """
+        
+        print("Creating consolidated knowledge base...")
+        try:
+            consolidated_response = self.processor.model.generate_content(consolidation_prompt)
+            self.catalog_data = consolidated_response.text
+        except Exception as e:
+            print(f"Error creating consolidated data: {e}")
+            self.catalog_data = full_analysis  # Use raw analysis as fallback
+        
+        # Create catalog summary
+        summary_prompt = f"""
+        Create a concise but comprehensive summary of catalog: {self.catalog_name}
+        
+        Based on: {self.catalog_data[:5000]}
+        
+        Include:
+        - Main product categories and specializations
+        - Number of products and price ranges
+        - Key brands and manufacturers
+        - Unique features or specializations
+        - Target market or customer base
+        
+        Keep it under 300 words but make it informative.
+        """
+        
+        try:
+            summary_response = self.processor.model.generate_content(summary_prompt)
+            self.catalog_summary = summary_response.text
+        except Exception as e:
+            self.catalog_summary = f"Catalog: {self.catalog_name} with {len(self.pdf_images)} pages of products."
+    
+    async def _initialize_agent(self) -> None:
+        """Initialize OpenAI Agent with enhanced instructions."""
+        try:
+            self.agent = agents.Agent(
+                name=f"Expert Catalog Assistant - {self.catalog_name}",
+                instructions=f"""
+                You are an expert product specialist with comprehensive knowledge of catalog: {self.catalog_name}
+                
+                **CATALOG OVERVIEW:**
+                {self.catalog_summary}
+                
+                **YOUR EXPERTISE:**
+                You have complete knowledge of every product in this catalog, including:
+                - Exact product names, models, and variations
+                - Detailed specifications and features
+                - Current pricing and availability
+                - Page locations for reference
+                - Related products and alternatives
+                
+                **AVAILABLE TOOLS:**
+                - search_products: Find products by any criteria (name, category, price, features)
+                - get_product_details: Get complete information about specific products
+                - compare_products: Side-by-side product comparisons
+                - analyze_specific_pages: Examine specific pages in detail
+                - get_catalog_overview: Provide catalog summary and organization
+                
+                **RESPONSE GUIDELINES:**
+                1. **ALWAYS search first** - Use search_products for any product-related query
+                2. **Be comprehensive** - Provide complete product information including prices, specs, and page references
+                3. **Be accurate** - Only provide information that exists in the catalog
+                4. **Be helpful** - If exact product not found, suggest similar or related products
+                5. **Include details** - Mention catalog name, page numbers, and specific model information
+                6. **Price conscious** - Always include pricing information when available
+                
+                **SEARCH STRATEGY:**
+                - Try different search terms if first attempt doesn't find results
+                - Look for product variations and similar items
+                - Consider alternative names or categories
+                - Search by features or specifications if product names don't work
+                
+                **WHEN NO EXACT MATCH:**
+                - Clearly state what was searched for
+                - Suggest the closest alternatives available
+                - Explain what products ARE available in relevant categories
+                - Offer to search by different criteria
+                
+                You are the definitive expert on catalog: {self.catalog_name}
+                Always provide accurate, detailed, and helpful responses.
+                """,
+                tools=[
+                    agents.function_tool(self.tools.search_products),
+                    agents.function_tool(self.tools.get_product_details),
+                    agents.function_tool(self.tools.compare_products),
+                    agents.function_tool(self.tools.analyze_specific_pages),
+                    agents.function_tool(self.tools.get_catalog_overview),
+                ],
+                model=agents.OpenAIChatCompletionsModel(
+                    model=AGENT_LLM_NAME, 
+                    openai_client=self.openai_client
+                ),
+            )
+            print(f"✅ Enhanced agent initialized for catalog: {self.catalog_name}")
+        except Exception as e:
+            print(f"❌ Error initializing agent for {self.catalog_name}: {e}")
+            self.agent = None
+    
     async def chat_response(self, question: str) -> str:
-        """Get chat response using OpenAI Agent SDK or fallback."""
+        """Enhanced chat response with better error handling."""
         if not self.agent:
-            # Fallback to direct tool usage if agent failed to initialize
+            print(f"Agent not available for {self.catalog_name}, using direct search...")
             if self.tools:
                 return await self.tools.search_products(question)
             else:
                 return f"❌ Catalog {self.catalog_name} not properly initialized."
             
         try:
-            print(f"\n=== CATALOG AGENT RESPONSE ===")
+            print(f"\\n=== ENHANCED CATALOG AGENT RESPONSE ===")
             print(f"Catalog: {self.catalog_name}")
             print(f"Question: {question}")
+            print(f"Available data size: {len(self.catalog_data)} characters")
             
             result = await agents.Runner.run(self.agent, input=question)
-            print("DEBUG: Agent result:", result)
             
-            # Extract the final response - following your reference pattern
+            # Enhanced response extraction
             response_text = ""
             if hasattr(result, 'messages') and result.messages:
                 for message in reversed(result.messages):
@@ -178,15 +337,25 @@ class PDFCatalogAgent:
             if not response_text and hasattr(result, 'final_output'):
                 response_text = str(result.final_output)
 
-            return response_text or "No response from agent."
+            # Enhanced validation - if response seems poor, try direct search
+            if response_text and (len(response_text.strip()) < 50 or 
+                                "no information" in response_text.lower() or
+                                "cannot find" in response_text.lower()):
+                print("Agent response seems insufficient, trying direct tool search...")
+                direct_response = await self.tools.search_products(question)
+                if len(direct_response) > len(response_text):
+                    response_text = direct_response
+
+            return response_text or f"Unable to find information about '{question}' in catalog {self.catalog_name}."
                     
         except Exception as e:
-            print(f"Chat response error for {self.catalog_name}: {str(e)}")
-            # Fallback to direct tool usage
+            print(f"Enhanced chat response error for {self.catalog_name}: {str(e)}")
+            # Enhanced fallback
             try:
                 if self.tools:
+                    print("Using direct tool fallback...")
                     return await self.tools.search_products(question)
                 else:
-                    return f"I encountered an error processing your request in {self.catalog_name}: {str(e)}. Please try rephrasing your question."
+                    return f"I encountered an error processing your request in {self.catalog_name}. The catalog may need to be reinitialized."
             except Exception as tool_error:
-                return f"I encountered an error processing your request in {self.catalog_name}: {str(e)}. Please try rephrasing your question."
+                return f"Error processing '{question}' in {self.catalog_name}: {str(e)}. Please try a different query or contact support."
