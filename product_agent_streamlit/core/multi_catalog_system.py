@@ -6,8 +6,8 @@ from typing import Dict
 from openai import AsyncOpenAI
 
 from storage.catalog_library import CatalogLibrary
-from agents.orchestrator_agent import OrchestratorAgent
-from agents.catalog_agent import PDFCatalogAgent
+from custom_agents.orchestrator_agent import OrchestratorAgent
+from custom_agents.catalog_agent import PDFCatalogAgent
 
 class MultiCatalogSystem:
     """Main system that manages orchestrator and individual catalog agents."""

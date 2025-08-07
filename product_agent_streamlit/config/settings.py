@@ -2,10 +2,13 @@
 Configuration settings for the Multi-Catalog System
 """
 
+import os
 import logging
 import nest_asyncio
-import agents
 from dotenv import load_dotenv
+
+# Disable OpenAI Agents tracing via environment variable (before any imports)
+os.environ["OPENAI_AGENTS_DISABLE_TRACING"] = "1"
 
 # Agent configuration
 AGENT_LLM_NAME = "gemini-2.5-flash"
@@ -23,8 +26,9 @@ def setup_logging():
     logging.basicConfig(level=logging.INFO)
 
 def disable_agents_tracing():
-    """Disable OpenAI agents tracing."""
-    agents.set_tracing_disabled(disabled=True)
+    """Disable OpenAI agents tracing - already handled via environment variable."""
+    print("OpenAI Agents tracing disabled via environment variable")
+    pass
 
 # Initialize environment on import
 setup_environment()

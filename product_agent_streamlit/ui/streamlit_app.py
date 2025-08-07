@@ -135,6 +135,9 @@ def create_streamlit_app():
     if 'processed_files' not in st.session_state:
         st.session_state.processed_files = set()
     
+    if 'quick_action' not in st.session_state:
+        st.session_state.quick_action = None
+    
     # Initialize system if not already done
     if st.session_state.multi_system is None:
         try:
@@ -161,4 +164,141 @@ Upload your catalogs to get started!"""
     
     # Handle file uploads
     if uploaded_files:
-        new_files = [f for f in uploaded_files if f.name not in
+        new_files = [f for f in uploaded_files if f.name not in st.session_state.processed_files]
+        
+        if new_files:
+            st.info(f"🔄 Processing {len(new_files)} new catalog(s)...")
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            for i, pdf_file in enumerate(new_files):
+                try:
+                    status_text.text(f"Processing {pdf_file.name}...")
+                    progress_bar.progress((i) / len(new_files))
+                    
+                    # Add catalog using asyncio
+                    result = asyncio.run(st.session_state.multi_system.add_catalog(pdf_file))
+                    
+                    st.session_state.processed_files.add(pdf_file.name)
+                    
+                    # Add success message to chat
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": result
+                    })
+                    
+                except Exception as e:
+                    error_msg = f"❌ Error processing {pdf_file.name}: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+            
+            progress_bar.progress(1.0)
+            status_text.text(f"✅ Processing complete!")
+            time.sleep(1)
+            progress_bar.empty()
+            status_text.empty()
+            
+            st.rerun()
+    
+    # Handle quick actions
+    if st.session_state.quick_action:
+        action = st.session_state.quick_action
+        st.session_state.quick_action = None
+        
+        if action == "library_overview":
+            query = "Please provide an overview of all available catalogs in the library"
+        elif action == "search_all":
+            query = "Search all catalogs and show me what products are available"
+        elif action == "recommendations":
+            query = "What are your recommendations based on the available catalogs?"
+        else:
+            query = None
+        
+        if query:
+            # Add user message
+            st.session_state.messages.append({"role": "user", "content": query})
+            
+            # Process query
+            with st.spinner("🤖 Processing your request..."):
+                try:
+                    response = asyncio.run(st.session_state.multi_system.process_query(query))
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                except Exception as e:
+                    error_response = f"❌ Error processing request: {str(e)}"
+                    st.session_state.messages.append({"role": "assistant", "content": error_response})
+            
+            st.rerun()
+    
+    # Main chat interface
+    st.subheader("💬 Chat with Orchestrator Agent")
+    
+    # Display chat messages
+    chat_container = st.container()
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask me about your catalogs..."):
+        # Add user message
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        
+        # Display user message immediately
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        # Generate and display assistant response
+        with st.chat_message("assistant"):
+            with st.spinner("🤖 Thinking..."):
+                try:
+                    if st.session_state.multi_system and len(st.session_state.multi_system.catalog_library.catalogs) > 0:
+                        response = asyncio.run(st.session_state.multi_system.process_query(prompt))
+                    else:
+                        response = "I don't have any catalogs to search through yet. Please upload some PDF catalogs first!"
+                    
+                    st.markdown(response)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
+                    
+                except Exception as e:
+                    error_response = f"❌ Error processing your request: {str(e)}"
+                    st.markdown(error_response)
+                    st.session_state.messages.append({"role": "assistant", "content": error_response})
+    
+    # Footer information
+    with st.expander("ℹ️ System Information", expanded=False):
+        st.markdown("""
+        **Multi-PDF Catalog System with Orchestrator Agent**
+        
+        This system uses:
+        - **Gemini 2.5 Flash** for PDF analysis and content extraction
+        - **OpenAI GPT models** via Agent SDK for intelligent conversations
+        - **Orchestrator Agent** for automatic catalog selection
+        - **Individual Catalog Agents** for specialized product searches
+        
+        **Features:**
+        - Upload up to 300 PDF catalogs
+        - Automatic catalog selection based on query relevance
+        - Intelligent product search and comparison
+        - Multi-catalog support with smart routing
+        - Detailed product information extraction
+        
+        **Supported Operations:**
+        - Product searches across all catalogs
+        - Specific product detail requests
+        - Product comparisons
+        - Catalog overviews and summaries
+        - Price and specification queries
+        """)
+    
+    # Clear chat button
+    if st.button("🗑️ Clear Chat History"):
+        st.session_state.messages = []
+        st.rerun()
+
+if __name__ == "__main__":
+    create_streamlit_app()
