@@ -286,10 +286,5 @@ class MongoManager:
                 }
             ]
         results = collection_object.aggregate(pipeline)
-        # results_text = [" " +i.get('chunkValueRaw') + " "  for i in results]
-        # return list(results_text)
         return list(results)
-        # array_results = []
-        # for doc in results:
-        #     array_results.append(doc)
-        # return array_results
+       
