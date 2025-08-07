@@ -25,9 +25,9 @@ async def main():
 
     mongo = MongoManager()
     results = await mongo.perform_vector_search(
-        query="espresso machines", dbname=os.getenv("MONGODB_DATABASE"), collection_name=os.getenv("MONGODB_COLLECTION"),
+        query="Can you recommend a paderno kettle that has a capacity more than 1.5L?"
     )
-    print(f"Search results: {results}")
+    print("Search results:", results)
 
 
 if __name__ == "__main__":

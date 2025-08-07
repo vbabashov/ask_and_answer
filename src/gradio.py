@@ -7,16 +7,15 @@ import os
 import agents
 from openai import AsyncAzureOpenAI
 
-from prompts import REACT_INSTRUCTIONS
-from utils.langfuse.shared_client import langfuse_client
+from src.prompts import REACT_INSTRUCTIONS
+from src.utils.langfuse.shared_client import langfuse_client
 
 from dotenv import load_dotenv
 load_dotenv()
 
-from utils.azure_openai.client import get_openai_client
-from utils.tools.mongodb.atlas_mongo_util import MongoManager
-from utils.functions import handle_stream_events
-from agents import Agent, Runner, ModelSettings, function_tool
+from src.utils.azure_openai.client import get_openai_client
+from src.utils.tools.mongodb.atlas_mongo_util import MongoManager
+from agents import Agent, Runner, ModelSettings, function_tool, OpenAIChatCompletionsModel
 from agents import set_default_openai_client,set_default_openai_api,set_tracing_disabled
 from pydantic import BaseModel
 
@@ -29,19 +28,29 @@ set_default_openai_api ("chat_completions")
 set_tracing_disabled(True)
 
 
+class AgentOutput(BaseModel):
+    final_output: str
+    sourceUrl: list[str]
+    # ProductId: list[str]
+    metadata: dict = {}
+
+def structured_output(output: str, source_url: list[str], product_id: list[str]) -> AgentOutput:
+    """Structure the output from the agent into a AgentOutput model."""
+    return AgentOutput(final_output=output, sourceUrl=source_url, metadata={"ProductId": product_id})
+
+
 # Executor Agent: handles long context efficiently
 executor_agent = Agent(
-    name="SearchAgent",
+    name="ProductSupportAgent",
     instructions=(
-        "You are a product support agent. You receive a single search query as input. "
-        "Use the KnowledgeBaseTool to perform a search, then produce a concise "
-        "'search summary' of the key findings. Do NOT return raw search results."
+        "You are a product support assistant with access to a knowledge base. Given a search query, you should use the search tool \
+        provide results in json format following the schema {AgentOutput}. Do NOT return raw search results."
     ),
     tools=[
-        function_tool(mongo.perform_vector_search),
+        function_tool(mongo.perform_vector_search), function_tool(structured_output)
     ],
     # model=OpenAIChatCompletionsModel(
-    #     model="gpt-4o", openai_client=openai_client
+    #     model="gpt-4o-2024-08-06", openai_client=openai_client
     # ),
     model=os.getenv("AZURE_OPENAI_DEPLOYMENT")
 )
@@ -54,69 +63,45 @@ main_agent = Agent(
     # The long context provided to the worker agent is hidden from the main agent.
     tools=[
         executor_agent.as_tool(
-            tool_name="search",
+            tool_name="search_tool",
             tool_description="Perform search for a query and return a concise summary.",
-        )
-    ],
+        ) #, function_tool(structured_output)
 
-    # a larger, more capable model for planning and reasoning over summaries
+    ],
     # model=OpenAIChatCompletionsModel(
-    #     model="gpt-4o", openai_client=openai_client
+    #     model="gpt-4o-2024-08-06", openai_client=openai_client
     # ),
-    model=os.getenv("AZURE_OPENAI_DEPLOYMENT")
+    model=os.getenv("AZURE_OPENAI_DEPLOYMENT"),
+    # output_type=PlannerAgentOutput,
 )
 
-question = "What is the manufacturing warranty period for the espresso machines"
+question = "Can you recommend a paderno kettle that has a capacity more than 1.5L?"
 
 async def main():
 
     # run planner agent
-    result = Runner.run_streamed(
-        main_agent, 
-        input = question,
+    result = await Runner.run(
+        main_agent,
+        input=question,
     )
 
-    # # handle stream events
-    # print("--- Analyzing ---")
-    # await handle_stream_events(result)
-
-    # print planner agent's output
+    print("--- Planning ---")
     print()
     print("--- Planner Agent Output ---")
-    print(result.final_output)
+    print(f"Response: {result.final_output}")
     print()
 
-    result = Runner.run_streamed(
-            executor_agent,
-            result.final_output
-    )
 
-    # print("--- Executing ---")
-    # await handle_stream_events(result)
-
-    print()
-    print("--- Executor Agent Output ---")
-    print(result.final_output)
-    print()
-    
-
-    # # check if execution is required
-    # if result.final_output.exec_required:
-    #     print("Final Output Exec Inst:", result.final_output)  # Debug log
-    #     result = Runner.run_streamed(
+  # print("--- Executing ---")
+    # result = await Runner.run(
     #         executor_agent,
-    #         result.final_output
-    #     )
+    #         input=result
+    # )
+    # print()
+    # print("--- Executor Agent Output ---")
+    # print(result.final_output)
+    # print()
     
-    #     print("--- Executing ---")
-    #     await handle_stream_events(result)
-
-    #     print()
-    #     print("--- Executor Agent Output ---")
-    #     print(result.final_output)
-    #     print()
-
-
 
 if __name__ == "__main__":
     asyncio.run(main())

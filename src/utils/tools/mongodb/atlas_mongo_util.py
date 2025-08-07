@@ -245,25 +245,31 @@ class MongoManager:
             print("Document insertion failed.")
 
    # https://www.mongodb.com/docs/atlas/atlas-vector-search/vector-search-stage/
-    async def perform_vector_search(self,dbname,collection_name,query:str):
+    async def perform_vector_search(self, query:str):
+        print("Performing vector search...")
+        print (f"Query: {query}")
         # database_object = self.client[dbname]
-        collection_object = self.client[dbname][collection_name]
-        # collection_name = os.getenv("MONGODB_COLLECTION")
+        db_name = os.getenv("MONGODB_DATABASE")
+        collection_name = os.getenv("MONGODB_COLLECTION")
+        collection_object = self.client[db_name][collection_name]
         index_name = os.getenv("PRODUCT_SEARCH_INDEX")
         attr_name = os.getenv("SEARCH_COLUMN")
 
         if query is None:
             raise ValueError("Query is required")
-
+       
         embedding_vector = await aoai_embed_query(query=query, client=get_openai_client())
-        # projected_fields = dict(score= { "$meta": 'vectorSearchScore' })
-        # if len(projection) != 0:
-        #     for field in projection:
-        #         projected_fields[field] = 1 # type: ignore
-        # else:
-        #     projected_fields["document"] = '$$ROOT' # type: ignore
 
-        # print(f"Projected fields: {projected_fields}")
+        projection = ["source", "chunkValueRaw", "metadata", "sourceUrl"] 
+        projected_fields = dict(score= { "$meta": 'vectorSearchScore' })
+        
+        if len(projection) != 0:
+            for field in projection:
+                projected_fields[field] = 1 # type: ignore
+        else:
+            projected_fields["document"] = '$$ROOT' # type: ignore
+
+        print(f"Projected fields: {projected_fields}")
 
         pipeline = [
                 {
@@ -275,9 +281,15 @@ class MongoManager:
                         "exact": True
                     }
                 },
-                # {
-                #     "$project": projected_fields
-                # }
+                {
+                    "$project": projected_fields
+                }
             ]
         results = collection_object.aggregate(pipeline)
+        # results_text = [" " +i.get('chunkValueRaw') + " "  for i in results]
+        # return list(results_text)
         return list(results)
+        # array_results = []
+        # for doc in results:
+        #     array_results.append(doc)
+        # return array_results
