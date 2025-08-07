@@ -1,168 +1,3 @@
-# """
-# Tools for the individual catalog agent
-# """
-
-# from typing import List
-# from PIL import Image
-# from processors.pdf_processor import PDFCatalogProcessor
-
-# class CatalogTools:
-#     """Tools for the individual catalog agent."""
-    
-#     def __init__(self, catalog_data: str, pdf_images: List[Image.Image], processor: PDFCatalogProcessor, catalog_name: str):
-#         self.catalog_data = catalog_data
-#         self.pdf_images = pdf_images
-#         self.processor = processor
-#         self.catalog_name = catalog_name
-    
-#     async def search_products(self, query: str) -> str:
-#         """Search for products in the catalog based on query."""
-#         try:
-#             print(f"\n=== CATALOG AGENT SEARCH ===")
-#             print(f"Catalog: {self.catalog_name}")
-#             print(f"Query: {query}")
-#             print(f"Catalog data preview: {self.catalog_data[:500]}...")
-            
-#             search_prompt = f"""
-#             You are analyzing the catalog "{self.catalog_name}" for products related to "{query}".
-            
-#             Catalog content:
-#             {self.catalog_data[:12000]}  # Increased context window
-            
-#             TASK: Search thoroughly for ANY products that match or relate to the query "{query}".
-            
-#             If you find matching products, provide:
-#             1. All matching products with full details
-#             2. Exact product names and model numbers
-#             3. Prices and specifications
-#             4. Page numbers where found
-#             5. Why each product matches the search
-#             6. Features and capabilities
-#             7. Warranty and support info
-            
-#             If NO matching products are found, respond with:
-#             "No products matching '{query}' were found in this catalog. This catalog contains [list the main product types you can see]."
-            
-#             Be thorough and accurate. Don't make up information.
-#             """
-            
-#             response = self.processor.model.generate_content(search_prompt)
-#             result = response.text
-#             print(f"Search result: {result[:200]}...")
-#             return result
-            
-#         except Exception as e:
-#             return f"Error searching products in {self.catalog_name}: {str(e)}"
-    
-#     async def get_product_details(self, product_name: str) -> str:
-#         """Get detailed information about a specific product."""
-#         try:
-#             detail_prompt = f"""
-#             From catalog {self.catalog_name}, find detailed information about "{product_name}":
-            
-#             {self.catalog_data[:8000]}
-            
-#             Provide complete details including:
-#             - Full product name and model
-#             - All specifications and features
-#             - Price and pricing options
-#             - Page location
-#             - Category/section
-#             - Related products
-#             - Availability information
-            
-#             If exact product not found, suggest closest matches.
-#             """
-            
-#             response = self.processor.model.generate_content(detail_prompt)
-#             return response.text
-            
-#         except Exception as e:
-#             return f"Error getting product details: {str(e)}"
-    
-#     async def compare_products(self, product1: str, product2: str) -> str:
-#         """Compare two products from the catalog."""
-#         try:
-#             compare_prompt = f"""
-#             From catalog {self.catalog_name}, compare "{product1}" and "{product2}":
-            
-#             {self.catalog_data[:8000]}
-            
-#             Provide:
-#             1. Side-by-side comparison table
-#             2. Price comparison
-#             3. Feature differences
-#             4. Pros and cons for each
-#             5. Recommendations for different use cases
-#             6. Page references
-            
-#             If products not found, suggest similar alternatives.
-#             """
-            
-#             response = self.processor.model.generate_content(compare_prompt)
-#             return response.text
-            
-#         except Exception as e:
-#             return f"Error comparing products: {str(e)}"
-    
-#     async def analyze_specific_pages(self, page_numbers: str, focus: str = "general analysis") -> str:
-#         """Analyze specific pages with focused attention."""
-#         try:
-#             pages = [int(p.strip()) for p in page_numbers.split(',') if p.strip().isdigit()]
-#             valid_pages = [i-1 for i in pages if 0 < i <= len(self.pdf_images)]
-            
-#             if not valid_pages:
-#                 return "No valid page numbers provided. Please specify page numbers separated by commas."
-            
-#             pages_to_analyze = [self.pdf_images[i] for i in valid_pages]
-            
-#             analyze_prompt = f"""
-#             Analyze pages {page_numbers} from catalog {self.catalog_name} with focus on: {focus}
-            
-#             Extract:
-#             1. All products on these pages
-#             2. Complete text content
-#             3. Pricing and specifications
-#             4. Special offers or promotions
-#             5. Technical details
-#             6. Contact/ordering information
-            
-#             Focus area: {focus}
-#             Be thorough and extract all visible text.
-#             """
-            
-#             response = self.processor.model.generate_content([analyze_prompt] + pages_to_analyze)
-#             return response.text
-            
-#         except Exception as e:
-#             return f"Error analyzing pages: {str(e)}"
-    
-#     async def get_catalog_overview(self) -> str:
-#         """Get overview of the catalog."""
-#         try:
-#             overview_prompt = f"""
-#             Provide a comprehensive overview of catalog {self.catalog_name}:
-            
-#             {self.catalog_data[:8000]}
-            
-#             Include:
-#             1. Business type and product categories
-#             2. Total number of products
-#             3. Price ranges
-#             4. Main sections/categories  
-#             5. Special features or highlights
-#             6. Contact and ordering information
-#             7. List of main product names/types available
-            
-#             Keep it informative but concise.
-#             """
-            
-#             response = self.processor.model.generate_content(overview_prompt)
-#             return response.text
-            
-#         except Exception as e:
-#             return f"Error generating overview: {str(e)}"
-
 """
 Enhanced tools for individual catalog agents with better product search
 Key improvements:
@@ -192,7 +27,7 @@ class CatalogTools:
     async def search_products(self, query: str) -> str:
         """Enhanced multi-stage product search."""
         try:
-            print(f"\\n=== ENHANCED CATALOG SEARCH ===")
+            print(f"\n=== ENHANCED CATALOG SEARCH ===")
             print(f"Catalog: {self.catalog_name}")
             print(f"Query: {query}")
             print(f"Data available: {len(self.catalog_data)} chars, Index: {len(self.product_index)} chars")
@@ -446,9 +281,321 @@ class CatalogTools:
     
     def _format_response(self, response: str, search_method: str) -> str:
         """Format the search response with catalog information."""
-        formatted = f"**Search Results from {self.catalog_name}** (Method: {search_method})\\n\\n"
+        formatted = f"**Search Results from {self.catalog_name}** (Method: {search_method})\n\n"
         formatted += response
-        formatted += f"\\n\\n*Source: {self.catalog_name}*"
+        formatted += f"\n\n*Source: {self.catalog_name}*"
         return formatted
     
-    async def _generate_helpful_response(self, query
+    async def _generate_helpful_response(self, query: str) -> str:
+        """Generate a helpful response when no products are found."""
+        try:
+            helpful_prompt = f"""
+            The user searched for "{query}" in catalog "{self.catalog_name}" but no matching products were found.
+            
+            CATALOG OVERVIEW:
+            {self.catalog_summary[:1000]}
+            
+            AVAILABLE CONTENT PREVIEW:
+            {self.catalog_data[:3000]}
+            
+            Create a helpful response that:
+            1. Clearly states that the specific query "{query}" was not found
+            2. Lists what product categories ARE available in this catalog
+            3. Suggests alternative search terms or related products
+            4. Shows a few example products from the catalog
+            5. Offers to help with more specific queries
+            
+            FORMAT:
+            **Search Result for '{query}' in {self.catalog_name}:**
+            
+            I couldn't find specific products matching "{query}" in this catalog.
+            
+            **What's Available in {self.catalog_name}:**
+            - [List main product categories]
+            - [List some example products]
+            
+            **Suggestions:**
+            - Try searching for: [alternative terms]
+            - You might be interested in: [related products]
+            
+            **Need Help?** Ask me about specific product categories or brands available in this catalog.
+            
+            Be helpful and informative, not apologetic.
+            """
+            
+            response = self.processor.model.generate_content(helpful_prompt)
+            result = response.text.strip()
+            return self._format_response(result, "Helpful Response")
+            
+        except Exception as e:
+            return f"❌ Unable to find '{query}' in catalog {self.catalog_name}. Please try a different search term or check other catalogs."
+    
+    async def get_product_details(self, product_name: str) -> str:
+        """Get detailed information about a specific product."""
+        try:
+            print(f"\n=== PRODUCT DETAILS REQUEST ===")
+            print(f"Catalog: {self.catalog_name}")
+            print(f"Product: {product_name}")
+            
+            detail_prompt = f"""
+            Find detailed information about product "{product_name}" in catalog "{self.catalog_name}".
+            
+            SEARCH IN:
+            1. Product Index: {self.product_index[:5000]}
+            2. Catalog Data: {self.catalog_data[:10000]}
+            
+            PROVIDE COMPLETE DETAILS:
+            - Full product name and all model variations
+            - Complete specifications and technical details
+            - ALL pricing information (regular, sale, bulk, etc.)
+            - Features and capabilities
+            - Dimensions, weight, and physical specs
+            - Warranty and support information
+            - Page number(s) where found
+            - Category and section location
+            - Related or compatible products
+            - Installation or usage requirements
+            
+            FORMAT:
+            **PRODUCT DETAILS: {product_name}**
+            
+            **Basic Information:**
+            - Name: [exact name]
+            - Model(s): [all variants]
+            - Category: [product category]
+            - Page(s): [page references]
+            
+            **Specifications:**
+            [Complete technical details]
+            
+            **Pricing:**
+            [All pricing information found]
+            
+            **Features:**
+            [Key features and capabilities]
+            
+            **Additional Information:**
+            [Warranty, support, related products]
+            
+            If product not found, suggest closest matches and alternatives.
+            Be extremely thorough and accurate.
+            """
+            
+            response = self.processor.model.generate_content(detail_prompt)
+            result = response.text.strip()
+            return self._format_response(result, "Product Details")
+            
+        except Exception as e:
+            return f"❌ Error getting product details for '{product_name}': {str(e)}"
+    
+    async def compare_products(self, product1: str, product2: str) -> str:
+        """Compare two products from the catalog."""
+        try:
+            print(f"\n=== PRODUCT COMPARISON ===")
+            print(f"Catalog: {self.catalog_name}")
+            print(f"Products: {product1} vs {product2}")
+            
+            compare_prompt = f"""
+            Compare products "{product1}" and "{product2}" from catalog "{self.catalog_name}".
+            
+            CATALOG DATA:
+            {self.catalog_data[:12000]}
+            
+            PRODUCT INDEX:
+            {self.product_index[:6000]}
+            
+            CREATE DETAILED COMPARISON:
+            
+            **PRODUCT COMPARISON: {product1} vs {product2}**
+            
+            **Product 1: {product1}**
+            - Model/SKU: [model info]
+            - Price: [pricing]
+            - Key Features: [main features]
+            - Specifications: [technical specs]
+            - Page: [page reference]
+            
+            **Product 2: {product2}**
+            - Model/SKU: [model info]  
+            - Price: [pricing]
+            - Key Features: [main features]
+            - Specifications: [technical specs]
+            - Page: [page reference]
+            
+            **SIDE-BY-SIDE COMPARISON:**
+            | Feature | {product1} | {product2} |
+            |---------|------------|------------|
+            | Price | [price1] | [price2] |
+            | [Feature] | [details] | [details] |
+            | [Feature] | [details] | [details] |
+            
+            **ADVANTAGES:**
+            - {product1}: [key advantages]
+            - {product2}: [key advantages]
+            
+            **RECOMMENDATIONS:**
+            - Best for [use case]: [product choice and why]
+            - Best value: [analysis]
+            - Best features: [analysis]
+            
+            If either product not found, suggest alternatives and explain what's available.
+            """
+            
+            response = self.processor.model.generate_content(compare_prompt)
+            result = response.text.strip()
+            return self._format_response(result, "Product Comparison")
+            
+        except Exception as e:
+            return f"❌ Error comparing products: {str(e)}"
+    
+    async def analyze_specific_pages(self, page_numbers: str, focus: str = "general analysis") -> str:
+        """Analyze specific pages with focused attention."""
+        try:
+            print(f"\n=== PAGE ANALYSIS ===")
+            print(f"Catalog: {self.catalog_name}")
+            print(f"Pages: {page_numbers}")
+            print(f"Focus: {focus}")
+            
+            # Parse page numbers
+            pages = []
+            for p in page_numbers.replace(' ', '').split(','):
+                if '-' in p:  # Handle ranges like "1-5"
+                    start, end = map(int, p.split('-'))
+                    pages.extend(range(start, end + 1))
+                elif p.strip().isdigit():
+                    pages.append(int(p.strip()))
+            
+            # Filter valid pages (1-indexed to 0-indexed)
+            valid_pages = [i-1 for i in pages if 0 < i <= len(self.pdf_images)]
+            
+            if not valid_pages:
+                return f"❌ No valid page numbers provided. This catalog has {len(self.pdf_images)} pages. Please specify page numbers like '1,2,3' or '1-5'."
+            
+            # Get images for analysis
+            pages_to_analyze = [self.pdf_images[i] for i in valid_pages]
+            actual_pages = [i+1 for i in valid_pages]  # Convert back to 1-indexed for display
+            
+            analyze_prompt = f"""
+            Analyze pages {', '.join(map(str, actual_pages))} from catalog "{self.catalog_name}".
+            Focus area: {focus}
+            
+            EXTRACT EVERYTHING VISIBLE:
+            1. **ALL PRODUCTS** on these pages
+               - Complete product names and models
+               - All pricing information
+               - Specifications and features
+               - SKUs and part numbers
+            
+            2. **COMPLETE TEXT CONTENT**
+               - Headers and section titles
+               - Product descriptions
+               - Technical specifications
+               - Warranty information
+               - Contact details
+            
+            3. **SPECIAL FOCUS: {focus}**
+               - Pay special attention to information related to: {focus}
+               - Highlight relevant details for this focus area
+            
+            4. **ORGANIZATION**
+               - How the pages are structured
+               - Categories and sections
+               - Cross-references to other pages
+            
+            FORMAT:
+            **ANALYSIS OF PAGES {', '.join(map(str, actual_pages))} - FOCUS: {focus.upper()}**
+            
+            **PRODUCTS FOUND:**
+            [Complete list of all products with details]
+            
+            **KEY INFORMATION:**
+            [All relevant text and details]
+            
+            **FOCUS AREA DETAILS ({focus}):**
+            [Specific information related to the focus area]
+            
+            **PAGE ORGANIZATION:**
+            [How content is structured]
+            
+            Be extremely thorough - extract ALL visible text including small print, captions, and footnotes.
+            """
+            
+            response = self.processor.model.generate_content([analyze_prompt] + pages_to_analyze)
+            result = response.text.strip()
+            return self._format_response(result, f"Page Analysis ({', '.join(map(str, actual_pages))})")
+            
+        except Exception as e:
+            return f"❌ Error analyzing pages: {str(e)}"
+    
+    async def get_catalog_overview(self) -> str:
+        """Get comprehensive overview of the catalog."""
+        try:
+            print(f"\n=== CATALOG OVERVIEW ===")
+            print(f"Catalog: {self.catalog_name}")
+            
+            overview_prompt = f"""
+            Provide a comprehensive overview of catalog "{self.catalog_name}".
+            
+            CATALOG SUMMARY:
+            {self.catalog_summary}
+            
+            PRODUCT INDEX:
+            {self.product_index[:8000]}
+            
+            CATALOG DATA SAMPLE:
+            {self.catalog_data[:6000]}
+            
+            CREATE COMPLETE OVERVIEW:
+            
+            **CATALOG OVERVIEW: {self.catalog_name}**
+            
+            **Business Information:**
+            - Company name and type
+            - Business focus and specialization
+            - Target market and customer base
+            
+            **Product Categories:**
+            - Main product categories (list all)
+            - Number of products in each category
+            - Specialty or featured product lines
+            
+            **Product Range:**
+            - Total estimated number of products
+            - Price ranges (lowest to highest)
+            - Featured or premium products
+            - Popular or best-selling items
+            
+            **Key Brands and Manufacturers:**
+            - All brands represented
+            - Exclusive or featured brands
+            - Private label products
+            
+            **Catalog Organization:**
+            - Total pages: {len(self.pdf_images)}
+            - How content is organized
+            - Main sections and their purposes
+            - Special features (index, guides, etc.)
+            
+            **Services and Information:**
+            - Warranty and support information
+            - Ordering and contact details
+            - Special services offered
+            - Technical support availability
+            
+            **Sample Products:**
+            [List 10-15 representative products with brief details]
+            
+            **How to Use This Catalog:**
+            - Best ways to search for products
+            - Key sections to check for specific needs
+            - Tips for finding product information
+            
+            Make this a comprehensive, useful overview that helps users understand what's available.
+            """
+            
+            response = self.processor.model.generate_content(overview_prompt)
+            result = response.text.strip()
+            return self._format_response(result, "Catalog Overview")
+            
+        except Exception as e:
+            return f"❌ Error generating catalog overview: {str(e)}"

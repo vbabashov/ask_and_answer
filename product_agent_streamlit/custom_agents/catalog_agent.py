@@ -74,7 +74,10 @@ class PDFCatalogAgent:
             
             print(f"✅ Catalog agent for {self.catalog_name} fully initialized!")
             print(f"   - {len(self.pdf_images)} pages processed")
-            print(f"   - {len(self.product_index.split('\\n'))} products indexed")
+            # Fix the f-string backslash issue
+            newline_char = '\n'
+            product_count = len(self.product_index.split(newline_char))
+            print(f"   - {product_count} products indexed")
             print(f"   - Knowledge base size: {len(self.catalog_data)} characters")
             
         except Exception as e:
@@ -130,7 +133,9 @@ class PDFCatalogAgent:
     
     async def _create_catalog_knowledge_base(self, all_analyses: List[str]) -> None:
         """Create comprehensive, searchable catalog knowledge base."""
-        full_analysis = "\\n\\n".join(all_analyses)
+        # Fix the f-string backslash issue
+        newline_double = '\n\n'
+        full_analysis = newline_double.join(all_analyses)
         
         # Create product index
         index_prompt = f"""
@@ -233,8 +238,30 @@ class PDFCatalogAgent:
             self.catalog_summary = f"Catalog: {self.catalog_name} with {len(self.pdf_images)} pages of products."
     
     async def _initialize_agent(self) -> None:
-        """Initialize OpenAI Agent with enhanced instructions."""
+        """Initialize OpenAI Agent with Gemini model."""
         try:
+            # Import the Gemini adapter
+            from adapters.gemini_model import GeminiChatModel
+            
+            # Create Gemini model instance
+            gemini_model = GeminiChatModel(
+                model_name="gemini-2.5-flash", 
+                api_key=self.processor.model._api_key  # Get API key from processor
+            )
+            
+            # Create a custom model wrapper for agents SDK
+            class GeminiModelWrapper:
+                def __init__(self, gemini_client):
+                    self.gemini_client = gemini_client
+                    
+                @property
+                def chat(self):
+                    return self
+                    
+                @property
+                def completions(self):
+                    return self.gemini_client
+            
             self.agent = agents.Agent(
                 name=f"Expert Catalog Assistant - {self.catalog_name}",
                 instructions=f"""
@@ -289,15 +316,17 @@ class PDFCatalogAgent:
                     agents.function_tool(self.tools.get_catalog_overview),
                 ],
                 model=agents.OpenAIChatCompletionsModel(
-                    model=AGENT_LLM_NAME, 
-                    openai_client=self.openai_client
+                    model="gemini",  # Placeholder name
+                    openai_client=GeminiModelWrapper(gemini_model)
                 ),
             )
-            print(f"✅ Enhanced agent initialized for catalog: {self.catalog_name}")
+            print(f"✅ Enhanced agent initialized for catalog: {self.catalog_name} with Gemini")
         except Exception as e:
             print(f"❌ Error initializing agent for {self.catalog_name}: {e}")
+            import traceback
+            traceback.print_exc()
             self.agent = None
-    
+        
     async def chat_response(self, question: str) -> str:
         """Enhanced chat response with better error handling."""
         if not self.agent:
@@ -308,7 +337,7 @@ class PDFCatalogAgent:
                 return f"❌ Catalog {self.catalog_name} not properly initialized."
             
         try:
-            print(f"\\n=== ENHANCED CATALOG AGENT RESPONSE ===")
+            print(f"\n=== ENHANCED CATALOG AGENT RESPONSE ===")
             print(f"Catalog: {self.catalog_name}")
             print(f"Question: {question}")
             print(f"Available data size: {len(self.catalog_data)} characters")

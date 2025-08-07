@@ -1,5 +1,5 @@
 """
-Enhanced orchestrator tools with better catalog selection and fallback logic
+Enhanced orchestrator agent with better catalog selection and fallback logic
 Key improvements:
 1. Try all catalogs until a good answer is found
 2. Better response quality detection
@@ -7,8 +7,15 @@ Key improvements:
 4. Comprehensive fallback strategies
 """
 
+import os
+import agents
+from openai import AsyncOpenAI
+from typing import Tuple
+
+from config.settings import AGENT_LLM_NAME
 from storage.catalog_library import CatalogLibrary
 from processors.pdf_processor import PDFCatalogProcessor
+
 
 class OrchestratorTools:
     """Enhanced tools for the orchestrator agent."""
@@ -257,3 +264,142 @@ class OrchestratorTools:
             
         except Exception as e:
             return f"Error getting catalog overview: {str(e)}"
+
+
+class OrchestratorAgent:
+    """Enhanced orchestrator agent that manages multiple catalog agents."""
+    
+    def __init__(self, gemini_api_key: str, openai_client: AsyncOpenAI, catalog_library: CatalogLibrary, multi_system):
+        self.processor = PDFCatalogProcessor(gemini_api_key)
+        self.openai_client = openai_client
+        self.catalog_library = catalog_library
+        self.multi_system = multi_system
+        self.tools = OrchestratorTools(catalog_library, self.processor, multi_system)
+        self.agent = None
+        self._initialize_agent()
+    
+    def _initialize_agent(self):
+        """Initialize the OpenAI orchestrator agent with Gemini model."""
+        try:
+            # Get current catalog information
+            catalog_info = self._get_catalog_info()
+            
+            # Import the Gemini adapter
+            from adapters.gemini_model import GeminiChatModel
+            
+            # Use the API key directly from the processor
+            gemini_api_key = self.processor.gemini_api_key  # Ensure this is set during initialization
+            
+            # Create Gemini model instance
+            gemini_model = GeminiChatModel(
+                model_name="gemini-2.5-flash",  # Use the appropriate model name
+                api_key=gemini_api_key,  # Pass the API key explicitly
+                base_url=os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")  # Pass base URL
+            )
+            
+            # Create a custom model wrapper for agents SDK
+            class GeminiModelWrapper:
+                def __init__(self, gemini_client):
+                    self.gemini_client = gemini_client
+                    self.base_url = os.getenv("OPENAI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")  # Default base URL
+                
+                @property
+                def chat(self):
+                    return self
+                
+                @property
+                def completions(self):
+                    return self.gemini_client
+            
+            # Create the agent with Gemini model
+            self.agent = agents.Agent(
+                name="Multi-Catalog Orchestrator",
+                instructions=f"""
+                You are an expert Multi-Catalog Orchestrator Agent that helps users find products across multiple catalogs.
+                
+                **AVAILABLE CATALOGS:**
+                {catalog_info}
+                """,
+                tools=[
+                    agents.function_tool(self.tools.answer_query_with_best_catalog),
+                    agents.function_tool(self.tools.search_catalogs),
+                    agents.function_tool(self.tools.get_catalog_overview),
+                ],
+                model=agents.OpenAIChatCompletionsModel(
+                    model="gemini",  # Placeholder name
+                    openai_client=GeminiModelWrapper(gemini_model)
+                ),
+            )
+            print("✅ Orchestrator agent initialized successfully with Gemini")
+        except Exception as e:
+            print(f"❌ Error initializing orchestrator agent: {e}")
+            import traceback
+            traceback.print_exc()
+            self.agent = None
+    
+    def _get_catalog_info(self) -> str:
+        """Get formatted information about available catalogs."""
+        if not self.catalog_library.catalogs:
+            return "No catalogs currently available."
+        
+        info = f"Currently managing {len(self.catalog_library.catalogs)} catalogs:\n"
+        for filename, metadata in self.catalog_library.catalogs.items():
+            info += f"- {filename}: {metadata.summary[:100]}...\n"
+            info += f"  Categories: {', '.join(metadata.categories[:3])}\n"
+            info += f"  Products: {', '.join(getattr(metadata, 'product_types', [])[:3])}\n"
+        
+        return info
+    
+    async def chat_response(self, question: str) -> Tuple[str, str]:
+        """Get response from orchestrator agent."""
+        try:
+            print(f"\n=== ORCHESTRATOR CHAT RESPONSE ===")
+            print(f"Question: {question}")
+            print(f"Agent available: {self.agent is not None}")
+            
+            if not self.agent:
+                print("No agent available, reinitializing...")
+                self._initialize_agent()
+                if not self.agent:
+                    return "❌ Orchestrator agent is not available. Please check your configuration.", "system"
+            
+            # Use the agent to process the query
+            result = await agents.Runner.run(self.agent, input=question)
+            
+            # Extract response text
+            response_text = ""
+            selected_catalog = "orchestrator"
+            
+            if hasattr(result, 'messages') and result.messages:
+                for message in reversed(result.messages):
+                    if hasattr(message, 'role') and message.role == 'assistant':
+                        if hasattr(message, 'content'):
+                            if isinstance(message.content, str) and message.content.strip():
+                                response_text = message.content
+                                break
+                            elif isinstance(message.content, list):
+                                text_parts = []
+                                for content_block in message.content:
+                                    if hasattr(content_block, 'text') and content_block.text.strip():
+                                        text_parts.append(content_block.text)
+                                if text_parts:
+                                    response_text = ' '.join(text_parts)
+                                    break
+            
+            # Try final_output if available
+            if not response_text and hasattr(result, 'final_output'):
+                response_text = str(result.final_output)
+            
+            # Extract catalog name from response if present
+            if "Selected Catalog:" in response_text:
+                try:
+                    selected_catalog = response_text.split("Selected Catalog:")[1].split("**")[0].strip()
+                except:
+                    selected_catalog = "orchestrator"
+            
+            return response_text or "I'm having trouble processing that request. Please try rephrasing your question.", selected_catalog
+            
+        except Exception as e:
+            error_msg = f"❌ Error in orchestrator response: {str(e)}"
+            print(error_msg)
+            return error_msg, "system"

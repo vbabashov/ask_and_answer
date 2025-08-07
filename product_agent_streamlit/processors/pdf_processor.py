@@ -21,6 +21,7 @@ class PDFCatalogProcessor:
     """Handles PDF processing and analysis using Gemini."""
     
     def __init__(self, gemini_api_key: str):
+        self.gemini_api_key = gemini_api_key  # Store the API keys
         genai.configure(api_key=gemini_api_key)
         self.model = genai.GenerativeModel('gemini-2.5-flash')
         
