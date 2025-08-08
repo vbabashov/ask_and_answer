@@ -91,47 +91,28 @@ class PDFCatalogAgent:
     
     async def _extract_complete_content(self, images: List[Image.Image], batch_start: int) -> str:
         """Extract complete content with focus on thoroughness."""
+        # FIXED: Simpler extraction prompt
         extraction_prompt = f"""
-        Extract ALL content from pages {batch_start + 1} to {batch_start + len(images)} of catalog "{self.catalog_name}".
+        Extract all visible text and product information from these catalog pages.
         
-        **EXTRACTION REQUIREMENTS (Be extremely thorough):**
+        Focus on:
+        - Product names and models
+        - Specifications and features
+        - Prices and part numbers
+        - Categories and sections
         
-        1. **COMPLETE PRODUCT INVENTORY:**
-           - Every product name, including variations, models, SKUs
-           - Exact product titles as they appear on pages
-           - All model numbers, part numbers, serial numbers
-           - Complete product descriptions and features
-           - ALL pricing information (regular, sale, bulk, special offers)
-           - Product specifications (dimensions, weight, power, etc.)
-           - Compatibility and requirements
-           - Warranty and support information
-        
-        2. **COMPREHENSIVE TEXT EXTRACTION:**
-           - All visible text including headers, footers, captions
-           - Product categories and section headers
-           - Technical specifications in detail
-           - Installation or usage instructions
-           - Company information and contact details
-           - Ordering information and codes
-           - Even small print and fine text
-        
-        3. **ORGANIZED FORMAT:**
-           - Group information by products/categories
-           - Preserve page references and organization
-           - Make content easily searchable
-           - Use consistent formatting for similar items
-        
-        **CRITICAL: Extract EVERYTHING visible on these pages. This content will be used to answer specific user questions about products, so completeness is essential.**
-        
-        Format the output as structured, comprehensive content that captures every detail.
+        Format as structured content with product listings.
         """
         
         try:
             response = self.processor.model.generate_content([extraction_prompt] + images)
-            return response.text
+            if hasattr(response, 'text') and response.text:
+                return response.text
+            else:
+                return f"Content extraction failed for pages {batch_start + 1}-{batch_start + len(images)}"
         except Exception as e:
             return f"Error extracting content from pages {batch_start + 1}-{batch_start + len(images)}: {str(e)}"
-    
+   
     async def _build_catalog_database(self, content_sections: List[str]) -> str:
         """Build comprehensive, searchable catalog database."""
         all_content = "\n\n".join(content_sections)
@@ -334,23 +315,29 @@ class PDFCatalogAgent:
             self.agent = None
         
     async def chat_response(self, question: str) -> str:
-        """Enhanced chat response with better error handling."""
+        """Enhanced chat response with text search fallback."""
         if not self.agent:
-            print(f"Agent not available for {self.catalog_name}, using direct search...")
+            print(f"Agent not available for {self.catalog_name}, using text search...")
             if self.tools:
                 return await self.tools.search_products(question)
             else:
                 return f"❌ Catalog {self.catalog_name} not properly initialized."
             
         try:
-            print(f"\n=== ENHANCED CATALOG AGENT RESPONSE ===")
+            # FIXED: Try text search first for reliability
+            if self.tools:
+                text_result = self.tools._fallback_text_search(question)
+                if len(text_result) > 150 and "No information found" not in text_result:
+                    return text_result
+            
+            # Try agent if text search didn't work well
+            print(f"\n=== CATALOG AGENT RESPONSE ===")
             print(f"Catalog: {self.catalog_name}")
             print(f"Question: {question}")
-            print(f"Available data size: {len(self.catalog_data)} characters")
             
             result = await agents.Runner.run(self.agent, input=question)
             
-            # Enhanced response extraction
+            # Extract response text (existing code remains the same)
             response_text = ""
             if hasattr(result, 'messages') and result.messages:
                 for message in reversed(result.messages):
@@ -368,29 +355,20 @@ class PDFCatalogAgent:
                                     response_text = ' '.join(text_parts)
                                     break
 
-            # Try final_output if available
             if not response_text and hasattr(result, 'final_output'):
                 response_text = str(result.final_output)
 
-            # Enhanced validation - if response seems poor, try direct search
-            if response_text and (len(response_text.strip()) < 50 or 
-                                "no information" in response_text.lower() or
-                                "cannot find" in response_text.lower()):
-                print("Agent response seems insufficient, trying direct tool search...")
-                direct_response = await self.tools.search_products(question)
-                if len(direct_response) > len(response_text):
-                    response_text = direct_response
+            # Fallback to text search if agent response is poor
+            if (not response_text or len(response_text.strip()) < 50 or 
+                "no information" in response_text.lower()):
+                if self.tools:
+                    return self.tools._fallback_text_search(question)
 
             return response_text or f"Unable to find information about '{question}' in catalog {self.catalog_name}."
                     
         except Exception as e:
-            print(f"Enhanced chat response error for {self.catalog_name}: {str(e)}")
-            # Enhanced fallback
-            try:
-                if self.tools:
-                    print("Using direct tool fallback...")
-                    return await self.tools.search_products(question)
-                else:
-                    return f"I encountered an error processing your request in {self.catalog_name}. The catalog may need to be reinitialized."
-            except Exception as tool_error:
-                return f"Error processing '{question}' in {self.catalog_name}: {str(e)}. Please try a different query or contact support."
+            print(f"Chat response error for {self.catalog_name}: {str(e)}")
+            # Use text search as final fallback
+            if self.tools:
+                return self.tools._fallback_text_search(question)
+            return f"Error processing '{question}' in {self.catalog_name}: {str(e)}"

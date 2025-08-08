@@ -69,51 +69,128 @@ class CatalogTools:
         return list(set(products))  # Remove duplicates
     
     async def search_products(self, query: str) -> str:
-        """Search and extract detailed information from catalog content."""
+        """Search with fallback to avoid API blocking."""
         query_lower = query.lower()
         
         print(f"🔍 Searching '{self.catalog_name}' for: {query}")
         
-        # Limit content size to prevent API issues
-        content_preview = self.catalog_data[:15000]  # Reduced from 20000
+        # FIXED: Try text-based search first to avoid API issues
+        try:
+            text_result = self._fallback_text_search(query)
+            if len(text_result) > 100 and "No information found" not in text_result:
+                return text_result
+        except Exception as e:
+            print(f"Text search failed: {e}")
         
-        # Create focused extraction prompt
+        # Only try API if text search fails
+        content_preview = self._get_relevant_content_chunks(query)[:5000]  # Further reduced
+        
+        # FIXED: Much simpler prompt to avoid blocking
         extraction_prompt = f"""
-        Find specific information about: {query}
+        Product search: {query}
         
-        From this catalog content (truncated preview):
-        {content_preview}
+        Content: {content_preview}
         
-        REQUIREMENTS:
-        1. Provide specific product details found
-        2. Include model numbers and specifications if available
-        3. Include pricing if mentioned
-        4. Be concise but comprehensive
-        5. Reference page numbers if available
-        
-        Extract relevant information directly from the content.
+        List relevant products found.
         """
         
         try:
             response = self.processor.model.generate_content(extraction_prompt)
             
-            # Handle the response safely
             if hasattr(response, 'text') and response.text:
                 result = response.text
-            elif hasattr(response, 'candidates') and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, 'content') and candidate.content.parts:
-                    result = candidate.content.parts[0].text
-                else:
-                    result = "Unable to extract information due to content filtering."
             else:
-                result = "No response generated."
+                return self._fallback_text_search(query)
             
             return self._format_detailed_response(result, query)
             
         except Exception as e:
-            print(f"Error in search_products: {e}")
-            return f"Error searching for '{query}' in {self.catalog_name}: {str(e)}"
+            print(f"API search failed: {e}")
+            return self._fallback_text_search(query)
+    
+    def _get_relevant_content_chunks(self, query: str) -> str:
+        """Get only relevant content chunks to avoid API limits."""
+        query_words = query.lower().split()
+        relevant_chunks = []
+        
+        for chunk in self.content_chunks:
+            content_lower = chunk['content'].lower()
+            relevance = sum(1 for word in query_words if word in content_lower)
+            
+            if relevance > 0:
+                relevant_chunks.append((relevance, chunk['content'][:1000]))  # Limit chunk size
+        
+        # Sort by relevance and take top chunks
+        relevant_chunks.sort(reverse=True)
+        return '\n\n'.join(chunk[1] for chunk in relevant_chunks[:3])
+
+    def _fallback_text_search(self, query: str) -> str:
+        """Enhanced text-based search for garage jack and other products."""
+        query_words = [word.lower() for word in query.split() if len(word) > 2]
+        results = []
+        
+        print(f"🔍 Performing text search for: {query_words}")
+        
+        # Search through all content chunks
+        for chunk in self.content_chunks:
+            content_lower = chunk['content'].lower()
+            content_lines = chunk['content'].split('\n')
+            
+            # Look for exact matches and partial matches
+            matches = 0
+            relevant_lines = []
+            
+            for word in query_words:
+                if word in content_lower:
+                    matches += 1
+                    # Find lines containing the word
+                    for line in content_lines:
+                        if word in line.lower() and line.strip():
+                            relevant_lines.append(line.strip())
+            
+            # Also check for compound terms like "garage jack"
+            full_query = ' '.join(query_words)
+            if full_query in content_lower:
+                matches += 3  # Boost score for full phrase match
+                for line in content_lines:
+                    if full_query in line.lower() and line.strip():
+                        relevant_lines.append(line.strip())
+            
+            if matches > 0:
+                # Remove duplicates while preserving order
+                unique_lines = []
+                seen = set()
+                for line in relevant_lines:
+                    if line not in seen:
+                        unique_lines.append(line)
+                        seen.add(line)
+                
+                results.append({
+                    'content': '\n'.join(unique_lines[:5]),  # Top 5 relevant lines
+                    'page_range': chunk.get('page_range', 'Unknown'),
+                    'matches': matches,
+                    'products': chunk.get('products', [])
+                })
+        
+        if not results:
+            return f"No information found for '{query}' in {self.catalog_name}. Try searching for specific product features or model numbers."
+        
+        # Sort by matches and format response
+        results.sort(key=lambda x: x['matches'], reverse=True)
+        
+        response = f"**Information about '{query}' from {self.catalog_name}:**\n\n"
+        
+        for i, result in enumerate(results[:3], 1):  # Top 3 results
+            response += f"**Match {i} ({result['page_range']}):**\n"
+            response += f"{result['content']}\n"
+            
+            if result['products']:
+                response += f"*Related products: {', '.join(result['products'][:3])}*\n"
+            
+            response += "\n---\n\n"
+        
+        response += f"*Text search results from {self.catalog_name}*"
+        return response
 
     def _is_still_vague(self, response: str) -> bool:
         """Check if response is still vague."""
@@ -137,6 +214,7 @@ class CatalogTools:
         
         return formatted
 
+    
     def _determine_query_type(self, query_lower: str) -> str:
         """Determine the type of query for better response formatting."""
         if any(word in query_lower for word in ['usage', 'instructions', 'how to', 'operate', 'use']):
@@ -213,90 +291,57 @@ class CatalogTools:
             return f"Error in direct extraction: {str(e)}"
     
     async def extract_complete_catalog_information(self, query: str) -> str:
-        """Extract comprehensive information by re-processing the entire catalog with LLM."""
+        """Extract comprehensive information by re-processing catalog with smaller batches."""
         
         print(f"🔍 Deep extraction from {self.catalog_name} for: {query}")
         
-        # Use the original PDF images for fresh analysis
         if not self.pdf_images:
-            return "PDF images not available for deep analysis."
+            return self._fallback_text_search(query)  # Use text search as fallback
         
-        # Process in batches for comprehensive extraction
-        batch_size = 4
+        # FIXED: Much smaller batch size to avoid API limits
+        batch_size = 2  # Reduced from 4
+        max_batches = 3  # Process only first few batches
         all_extracted_info = []
         
-        for i in range(0, len(self.pdf_images), batch_size):
+        for i in range(0, min(len(self.pdf_images), batch_size * max_batches), batch_size):
             batch = self.pdf_images[i:i + batch_size]
             batch_num = i // batch_size + 1
             
             print(f"Processing batch {batch_num} for deep extraction...")
             
+            # FIXED: Shorter, more focused prompt
             deep_extraction_prompt = f"""
-            Analyze these pages from {self.catalog_name} to answer: {query}
+            Find information about: {query}
             
-            EXTRACTION REQUIREMENTS:
-            1. Find ALL information related to the query
-            2. Extract COMPLETE details including:
-            - Full product specifications and features
-            - Complete usage instructions (every step)
-            - Safety information and warnings
-            - Technical specifications and dimensions
-            - Warranty information and terms
-            - Maintenance and care instructions
-            - Troubleshooting information
-            - Contact and support information
+            Extract:
+            - Product names and models
+            - Key specifications
+            - Prices if visible
+            - Page references
             
-            3. Include exact text from the manual - don't paraphrase
-            4. Reference page numbers where information is found
-            5. Extract even small details and specifications
-            
-            Query: {query}
-            
-            Provide COMPREHENSIVE, DETAILED extraction of ALL relevant information.
+            Be specific and concise.
             """
             
             try:
                 response = self.processor.model.generate_content([deep_extraction_prompt] + batch)
-                if response.text and response.text.strip():
-                    all_extracted_info.append(f"=== Pages {i+1}-{min(i+batch_size, len(self.pdf_images))} ===\n{response.text}")
+                if hasattr(response, 'text') and response.text and response.text.strip():
+                    all_extracted_info.append(f"Pages {i+1}-{min(i+batch_size, len(self.pdf_images))}:\n{response.text}")
+                else:
+                    print(f"No valid response from batch {batch_num}, skipping...")
             except Exception as e:
                 print(f"Error processing batch {batch_num}: {e}")
                 continue
         
         if not all_extracted_info:
-            return f"Unable to extract information about '{query}' from {self.catalog_name}"
+            return self._fallback_text_search(query)  # Use text search as fallback
         
-        # Combine all extracted information
-        combined_info = "\n\n".join(all_extracted_info)
+        # Return combined results without additional API call
+        final_response = f"**Information about '{query}' from {self.catalog_name}:**\n\n"
+        final_response += "\n\n".join(all_extracted_info)
+        final_response += f"\n\n*Analysis based on selected pages from {self.catalog_name}*"
         
-        # Final synthesis to create comprehensive response
-        synthesis_prompt = f"""
-        Create a comprehensive, detailed response about: {query}
-        
-        Based on this extracted information from {self.catalog_name}:
-        {combined_info[:25000]}
-        
-        SYNTHESIS REQUIREMENTS:
-        1. Organize the information logically
-        2. Include ALL relevant details found
-        3. Maintain specific technical specifications
-        4. Include complete instructions if found
-        5. Reference page numbers where applicable
-        6. Make it comprehensive but well-organized
-        
-        Create a complete, detailed response that answers the user's query thoroughly.
-        """
-        
-        try:
-            synthesis_response = self.processor.model.generate_content(synthesis_prompt)
-            final_response = f"**Comprehensive Information about '{query}' from {self.catalog_name}:**\n\n"
-            final_response += synthesis_response.text
-            final_response += f"\n\n*Complete analysis based on {len(self.pdf_images)} pages from {self.catalog_name}*"
-            return final_response
-        except Exception as e:
-            # Fallback to combined raw extraction
-            return f"**Detailed Information from {self.catalog_name}:**\n\n{combined_info}"
-            
+        return final_response
+                
     def _search_full_content(self, query: str, query_words: List[str]) -> List[Dict]:
         """Search the full catalog content for detailed matches."""
         results = []
