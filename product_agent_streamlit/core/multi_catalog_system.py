@@ -1,76 +1,104 @@
-"""
-Main system that manages orchestrator and individual catalog agents
-"""
-
-from typing import Dict
-from openai import AsyncOpenAI
-
-from storage.catalog_library import CatalogLibrary
+# multi_catalog_system.py
+import os
+import tempfile
+import asyncio
+from typing import Dict, List, Tuple, Optional
+from processors.pdf_processor import PDFProcessor
+from processors.catalog_manager import CatalogManager
 from custom_agents.orchestrator_agent import OrchestratorAgent
-from custom_agents.catalog_agent import PDFCatalogAgent
+from custom_agents.catalog_agent import CatalogAgent
+import openai
 
 class MultiCatalogSystem:
-    """Main system that manages orchestrator and individual catalog agents."""
-    
-    def __init__(self, gemini_api_key: str, openai_api_key: str):
+    def __init__(self, gemini_api_key: str, openai_api_key: str = None):
         self.gemini_api_key = gemini_api_key
-        self.openai_client = AsyncOpenAI(api_key=openai_api_key)
-        self.catalog_library = CatalogLibrary()
-        self.catalog_library._load_metadata()  # Load existing metadata
-        self.orchestrator = OrchestratorAgent(gemini_api_key, self.openai_client, self.catalog_library, self)
-        self.catalog_agents: Dict[str, PDFCatalogAgent] = {}
+        self.openai_api_key = openai_api_key or os.getenv('OPENAI_API_KEY')
         
-    async def add_catalog(self, pdf_file) -> str:
+        # Initialize PDF processor (still using Gemini for PDF processing)
+        self.pdf_processor = PDFProcessor(gemini_api_key)
+        
+        # Initialize OpenAI client for agents first
+        if self.openai_api_key:
+            self.openai_client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+        else:
+            self.openai_client = None
+        
+        # Initialize other components
+        self.catalog_manager = CatalogManager()
+        self.orchestrator = OrchestratorAgent(gemini_api_key, self.catalog_manager, self.openai_client)
+        self.catalog_agents: Dict[str, CatalogAgent] = {}
+    
+    def add_catalog(self, filename: str, pdf_bytes: bytes) -> bool:
         """Add a new catalog to the system."""
         try:
-            # Add to library and get metadata
-            metadata = self.catalog_library.add_catalog(pdf_file, self.orchestrator.processor)
+            # Save PDF temporarily
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
+                tmp_file.write(pdf_bytes)
+                tmp_path = tmp_file.name
             
-            # Print debug info about the added catalog
-            print(f"\n=== CATALOG ADDED ===")
-            print(f"Filename: {metadata.filename}")
-            print(f"Summary: {metadata.summary}")
-            print(f"Categories: {metadata.categories}")
-            print(f"Product Types: {metadata.product_types}")
-            print(f"Keywords: {metadata.keywords}")
-            
-            # Reinitialize orchestrator with updated catalog info
-            self.orchestrator._initialize_agent()
-            
-            return f"✅ Successfully added catalog: {metadata.filename}"
-            
+            try:
+                # Process PDF using Gemini
+                images = self.pdf_processor.pdf_to_images(tmp_path)
+                content = self.pdf_processor.extract_full_content(images)
+                summary = self.pdf_processor.generate_summary(images, filename)
+                
+                # Store in catalog manager
+                self.catalog_manager.add_catalog(filename, content, summary, len(images))
+                
+                # Create catalog agent with OpenAI client
+                if self.openai_client:
+                    self.catalog_agents[filename] = CatalogAgent(
+                        filename, content, self.gemini_api_key, self.openai_client
+                    )
+                else:
+                    print(f"Warning: OpenAI client not available, skipping agent creation for {filename}")
+                
+                return True
+            finally:
+                os.unlink(tmp_path)  # Clean up temp file
+                
         except Exception as e:
-            return f"❌ Error adding catalog: {str(e)}"
+            print(f"Error adding catalog {filename}: {e}")
+            return False
     
-    async def get_catalog_agent(self, catalog_name: str) -> PDFCatalogAgent:
-        """Get or create a catalog agent for specific catalog."""
-        if catalog_name not in self.catalog_agents:
-            if catalog_name not in self.catalog_library.catalogs:
-                raise Exception(f"Catalog {catalog_name} not found in library")
-            
-            print(f"Creating new agent for catalog: {catalog_name}")
-            # Create new agent
-            agent = PDFCatalogAgent(self.gemini_api_key, self.openai_client, catalog_name)
-            catalog_path = self.catalog_library.catalogs[catalog_name].file_path
-            
-            # Initialize the agent with the catalog
-            await agent.initialize_catalog(catalog_path)
-            
-            # Store the agent
-            self.catalog_agents[catalog_name] = agent
-        
-        return self.catalog_agents[catalog_name]
-    
-    async def process_query(self, question: str) -> str:
-        """Process a user query using the orchestrator agent."""
+    def search_query(self, query: str) -> Tuple[str, str]:
+        """Search for products across catalogs."""
         try:
-            print(f"\n=== SYSTEM QUERY PROCESSING ===")
-            print(f"Available catalogs: {list(self.catalog_library.catalogs.keys())}")
-            print(f"Question: {question}")
+            # Get best catalog from orchestrator
+            try:
+                selected_catalog = asyncio.run(self.orchestrator.select_best_catalog(query))
+            except Exception as e:
+                print(f"Orchestrator error: {e}")
+                # Fallback: use first available catalog
+                catalogs = list(self.catalog_manager.catalogs.keys())
+                selected_catalog = catalogs[0] if catalogs else None
             
-            # The orchestrator will now automatically select the best catalog and get the answer
-            orchestrator_response, selected_catalog = await self.orchestrator.chat_response(question)
-            return orchestrator_response
+            if not selected_catalog:
+                return "No relevant catalogs found for your query.", "system"
+            
+            # Get detailed response from catalog agent
+            if selected_catalog in self.catalog_agents:
+                agent = self.catalog_agents[selected_catalog]
+                
+                try:
+                    detailed_response = asyncio.run(agent.search_products_sync(query))
+                except Exception as e:
+                    print(f"Agent error: {e}")
+                    # Fallback to simple text search
+                    detailed_response = agent._fallback_text_search(query)
+                
+                response = f"**Selected Catalog: {selected_catalog}**\n\n{detailed_response}"
+                return response, selected_catalog
+            else:
+                return f"Catalog agent for {selected_catalog} not available.", "system"
+                
         except Exception as e:
-            print(f"Error in system query processing: {str(e)}")
-            return f"❌ Error processing query: {str(e)}"
+            return f"Error processing query: {str(e)}", "system"
+    
+    def get_catalog_names(self) -> List[str]:
+        """Get list of available catalog names."""
+        return list(self.catalog_manager.catalogs.keys())
+    
+    def get_all_catalog_summaries(self) -> str:
+        """Get formatted summaries of all catalogs."""
+        return self.catalog_manager.get_all_summaries()

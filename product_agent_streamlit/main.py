@@ -1,43 +1,13 @@
-# """
-# Multi-PDF Catalog System with Orchestrator Agent
-# Main entry point for the application
-# """
-
-# import sys
-# import os
-# import logging
-# from pathlib import Path
-
-# # Add project root to path
-# project_root = Path(__file__).parent
-# sys.path.insert(0, str(project_root))
-
-# # Import configuration
-# from config.settings import setup_logging, disable_agents_tracing
-# from ui.streamlit_app import create_streamlit_app
-
-# def main():
-#     """Main application entry point."""
-#     # Setup logging
-#     setup_logging()
-    
-#     # # Disable OpenAI agents tracing
-#     # disable_agents_tracing()
-    
-#     # Create and run the Streamlit app
-#     create_streamlit_app()
-
-# if __name__ == "__main__":
-#     main()
-
-# main.py
-# main.py
 import streamlit as st
 import os
 from pathlib import Path
-from multi_catalog_system import MultiCatalogSystem
+
+from core.multi_catalog_system import MultiCatalogSystem
 from dotenv import load_dotenv
+
 load_dotenv()
+
+
 def main():
     st.set_page_config(page_title="Multi-Catalog Search", layout="wide")
     
@@ -109,12 +79,15 @@ def main():
             # Get orchestrator response
             response, selected_catalog = system.search_query(query)
             
+            # Directly assign response to final_output
+            final_output = response if response else "No detailed information found."
+            
             # Display results
             if selected_catalog and selected_catalog != "system":
                 st.success(f"🎯 Found information in: **{selected_catalog}**")
             
             st.markdown("### Search Results:")
-            st.markdown(response)
+            st.markdown(final_output)
     
     # Show catalog summaries
     if st.button("Show All Catalog Summaries"):
