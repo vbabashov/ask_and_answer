@@ -74,88 +74,46 @@ class CatalogTools:
         
         print(f"🔍 Searching '{self.catalog_name}' for: {query}")
         
-        # Determine what type of information is requested
-        query_type = self._determine_query_type(query_lower)
+        # Limit content size to prevent API issues
+        content_preview = self.catalog_data[:15000]  # Reduced from 20000
         
-        # Create specific extraction prompt based on query type
-        if query_type == "USAGE_INSTRUCTIONS":
-            extraction_prompt = f"""
-            Extract COMPLETE usage instructions for the product mentioned in: {query}
-            
-            From this catalog content:
-            {self.catalog_data[:20000]}
-            
-            REQUIREMENTS:
-            1. Provide COMPLETE step-by-step usage instructions
-            2. Include all safety precautions mentioned
-            3. Include preparation steps, operation steps, and cleanup
-            4. Include any specific settings or modes mentioned
-            5. Reference specific page numbers if available
-            6. Include model numbers and product names
-            
-            Extract the FULL instructions as they appear in the manual - don't summarize.
-            """
+        # Create focused extraction prompt
+        extraction_prompt = f"""
+        Find specific information about: {query}
         
-        elif query_type == "WARRANTY_INFORMATION":
-            extraction_prompt = f"""
-            Extract COMPLETE warranty information for: {query}
-            
-            From this catalog content:
-            {self.catalog_data[:20000]}
-            
-            REQUIREMENTS:
-            1. Provide exact warranty duration and terms
-            2. Include what is covered and not covered
-            3. Include any conditions or requirements
-            4. Include contact information if available
-            5. Reference specific sections or pages
-            
-            Extract the COMPLETE warranty information as written in the manual.
-            """
+        From this catalog content (truncated preview):
+        {content_preview}
         
-        else:
-            extraction_prompt = f"""
-            Find and extract detailed information about: {query}
-            
-            From this catalog content:
-            {self.catalog_data[:20000]}
-            
-            REQUIREMENTS:
-            1. Provide specific, detailed information
-            2. Include model numbers, specifications, features
-            3. Include any relevant instructions or procedures
-            4. Reference page numbers where found
-            5. Be comprehensive and specific
-            
-            Extract COMPLETE information - don't just summarize.
-            """
+        REQUIREMENTS:
+        1. Provide specific product details found
+        2. Include model numbers and specifications if available
+        3. Include pricing if mentioned
+        4. Be concise but comprehensive
+        5. Reference page numbers if available
+        
+        Extract relevant information directly from the content.
+        """
         
         try:
             response = self.processor.model.generate_content(extraction_prompt)
-            result = response.text
             
-            # If still not detailed enough, try with more content
-            if len(result) < 200 or self._is_still_vague(result):
-                print("First extraction insufficient, trying with more content...")
-                enhanced_prompt = f"""
-                This is a CRITICAL request. Extract ALL detailed information about: {query}
-                
-                Use this additional catalog content:
-                {self.catalog_data[10000:30000]}  # Different section
-                
-                Product Index for reference:
-                {self.product_index[:5000]}
-                
-                MANDATORY: Provide COMPLETE, DETAILED information. No vague responses allowed.
-                If this is about usage instructions, provide the FULL step-by-step process.
-                """
-                response = self.processor.model.generate_content(enhanced_prompt)
+            # Handle the response safely
+            if hasattr(response, 'text') and response.text:
                 result = response.text
+            elif hasattr(response, 'candidates') and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, 'content') and candidate.content.parts:
+                    result = candidate.content.parts[0].text
+                else:
+                    result = "Unable to extract information due to content filtering."
+            else:
+                result = "No response generated."
             
             return self._format_detailed_response(result, query)
             
         except Exception as e:
-            return f"Error extracting information: {str(e)}"
+            print(f"Error in search_products: {e}")
+            return f"Error searching for '{query}' in {self.catalog_name}: {str(e)}"
 
     def _is_still_vague(self, response: str) -> bool:
         """Check if response is still vague."""

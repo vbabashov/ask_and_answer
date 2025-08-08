@@ -3,12 +3,30 @@ Streamlit interface for the multi-PDF catalog system
 """
 
 import asyncio
+import threading
+from concurrent.futures import ThreadPoolExecutor
+import nest_asyncio
+
 import os
 import time
 import streamlit as st
 
 from core.multi_catalog_system import MultiCatalogSystem
+nest_asyncio.apply()
 
+def run_async_in_thread(coro):
+    """Run async coroutine in a separate thread to avoid event loop conflicts."""
+    def run_in_thread():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
+    
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(run_in_thread)
+        return future.result()
 # Streamlit App Configuration
 st.set_page_config(
     page_title="Multi-PDF Catalog System with Orchestrator Agent",
@@ -178,7 +196,9 @@ Upload your catalogs to get started!"""
                     progress_bar.progress((i) / len(new_files))
                     
                     # Add catalog using asyncio
-                    result = asyncio.run(st.session_state.multi_system.add_catalog(pdf_file))
+                    # result = asyncio.run(st.session_state.multi_system.add_catalog(pdf_file))
+                    result = run_async_in_thread(st.session_state.multi_system.add_catalog(pdf_file))
+
                     
                     st.session_state.processed_files.add(pdf_file.name)
                     
@@ -225,7 +245,9 @@ Upload your catalogs to get started!"""
             # Process query
             with st.spinner("🤖 Processing your request..."):
                 try:
-                    response = asyncio.run(st.session_state.multi_system.process_query(query))
+                    # response = asyncio.run(st.session_state.multi_system.process_query(query))
+                    response = run_async_in_thread(st.session_state.multi_system.process_query(prompt))
+
                     st.session_state.messages.append({"role": "assistant", "content": response})
                 except Exception as e:
                     error_response = f"❌ Error processing request: {str(e)}"
@@ -257,7 +279,8 @@ Upload your catalogs to get started!"""
             with st.spinner("🤖 Thinking..."):
                 try:
                     if st.session_state.multi_system and len(st.session_state.multi_system.catalog_library.catalogs) > 0:
-                        response = asyncio.run(st.session_state.multi_system.process_query(prompt))
+                        # response = asyncio.run(st.session_state.multi_system.process_query(prompt))
+                        response = run_async_in_thread(st.session_state.multi_system.process_query(prompt))
                     else:
                         response = "I don't have any catalogs to search through yet. Please upload some PDF catalogs first!"
                     
