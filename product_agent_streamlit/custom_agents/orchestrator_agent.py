@@ -15,7 +15,7 @@ from typing import Tuple
 from config.settings import AGENT_LLM_NAME
 from storage.catalog_library import CatalogLibrary
 from processors.pdf_processor import PDFCatalogProcessor
-
+# from tools.orchestrator_tools import OrchestratorTools
 
 class OrchestratorTools:
     """Enhanced tools for the orchestrator agent."""
@@ -73,84 +73,67 @@ class OrchestratorTools:
         return (has_positive or response_has_query_terms) and not has_negative and is_substantial
     
     async def answer_query_with_best_catalog(self, query: str) -> str:
-        """Enhanced query processing with comprehensive catalog testing."""
+        """Enhanced query processing with deep catalog content extraction."""
         try:
-            print(f"\n=== ENHANCED ORCHESTRATOR PROCESSING ===")
+            print(f"\n=== DEEP ORCHESTRATOR PROCESSING ===")
             print(f"Query: {query}")
-            print(f"Available catalogs: {list(self.catalog_library.catalogs.keys())}")
             
             # Get ranked catalogs
-            relevant_catalogs = self.catalog_library.search_relevant_catalogs(query, self.processor, top_k=5)
+            relevant_catalogs = self.catalog_library.search_relevant_catalogs(query, self.processor, top_k=3)
             
             if not relevant_catalogs:
                 return "❌ No catalogs available to search."
             
-            print(f"Catalog rankings: {relevant_catalogs}")
+            best_catalog, score = relevant_catalogs[0]
+            print(f"✅ Selected catalog: {best_catalog} (score: {score})")
             
-            best_response = None
-            best_catalog = None
-            best_score = 0.0
+            # Get the catalog agent
+            catalog_agent = await self.multi_system.get_catalog_agent(best_catalog)
             
-            # Try catalogs in order of relevance
-            for catalog_name, relevance_score in relevant_catalogs:
-                print(f"\n--- Testing catalog: {catalog_name} (score: {relevance_score}) ---")
-                
-                try:
-                    # Get the catalog agent
-                    catalog_agent = await self.multi_system.get_catalog_agent(catalog_name)
-                    
-                    # Query the catalog
-                    response = await catalog_agent.chat_response(query)
-                    
-                    print(f"Response preview: {response[:200]}...")
-                    
-                    # Check if this is a good response
-                    is_good = self._is_good_response(response, query)
-                    print(f"Response quality: {'GOOD' if is_good else 'POOR'}")
-                    
-                    if is_good:
-                        print(f"✅ Found good response in catalog: {catalog_name}")
-                        best_response = response
-                        best_catalog = catalog_name
-                        best_score = relevance_score
-                        break  # Found a good answer, stop searching
-                    else:
-                        # Keep track of best response even if not ideal
-                        if best_response is None:
-                            best_response = response
-                            best_catalog = catalog_name
-                            best_score = relevance_score
-                
-                except Exception as e:
-                    print(f"❌ Error querying catalog {catalog_name}: {str(e)}")
-                    continue
+            # CRITICAL: Always use deep extraction for comprehensive answers
+            print(f"🔍 Performing deep extraction from {best_catalog}...")
+            detailed_response = await catalog_agent.tools.extract_complete_catalog_information(query)
             
-            # If no good response found, try a different approach
-            if best_response and not self._is_good_response(best_response, query):
-                print(f"\n--- No good responses found, trying comprehensive search ---")
-                
-                # Try a more general search across all catalogs
-                comprehensive_response = await self._comprehensive_search(query)
-                if comprehensive_response:
-                    return comprehensive_response
+            # If deep extraction fails, try regular agent response
+            if "Unable to extract" in detailed_response or len(detailed_response) < 200:
+                print("Deep extraction insufficient, trying agent response...")
+                agent_response = await catalog_agent.chat_response(query)
+                if len(agent_response) > len(detailed_response):
+                    detailed_response = agent_response
             
             # Format the final response
-            if best_response and best_catalog:
-                result = f"**Selected Catalog: {best_catalog}** (Relevance: {best_score:.1f}/10)\n\n"
-                result += f"**Answer:**\n{best_response}"
-                
-                # Add disclaimer if response quality is poor
-                if not self._is_good_response(best_response, query):
-                    result += f"\n\n*Note: Limited information found. You may want to try a more specific query or check if the product is available in other catalogs.*"
-                
-                return result
-            else:
-                return "❌ Unable to find relevant information in any catalog. Please check your query or try uploading more specific catalogs."
-                
+            result = f"**Selected Catalog: {best_catalog}** (Relevance: {score:.1f}/10)\n\n"
+            result += detailed_response
+            
+            return result
+            
         except Exception as e:
-            print(f"Error in enhanced orchestrator: {str(e)}")
+            print(f"Error in deep orchestrator processing: {str(e)}")
             return f"❌ Error processing query: {str(e)}"
-    
+
+    def _is_vague_response(self, response: str) -> bool:
+        """Check if response is vague and doesn't contain actual instructions."""
+        vague_indicators = [
+            "can be found in",
+            "available in the catalog",
+            "please let me know",
+            "i can help you",
+            "allow me a moment",
+            "would like me to provide"
+        ]
+        return any(indicator in response.lower() for indicator in vague_indicators)
+
+    async def _force_content_extraction(self, catalog_agent, query: str, catalog_name: str) -> str:
+        """Force direct extraction of content from the catalog."""
+        try:
+            # Use the catalog tools directly to search content
+            if hasattr(catalog_agent, 'tools') and catalog_agent.tools:
+                return await catalog_agent.tools.search_products(query)
+            return None
+        except Exception as e:
+            print(f"Error in forced content extraction: {e}")
+            return None
+        
     async def _comprehensive_search(self, query: str) -> str:
         """Perform comprehensive search across all catalogs with aggregated results."""
         try:
@@ -264,6 +247,44 @@ class OrchestratorTools:
             
         except Exception as e:
             return f"Error getting catalog overview: {str(e)}"
+    
+    async def get_detailed_catalog_summary(self) -> str:
+        """Get detailed summary of all catalogs with their specializations."""
+        try:
+            if not self.catalog_library.catalogs:
+                return "📚 **No catalogs available in the library.**"
+            
+            summary = f"📚 **Comprehensive Catalog Library Analysis**\n\n"
+            summary += f"**Total Catalogs:** {len(self.catalog_library.catalogs)}\n\n"
+            
+            # Group catalogs by category for better organization
+            categories = {}
+            for filename, metadata in self.catalog_library.catalogs.items():
+                for category in metadata.categories:
+                    if category not in categories:
+                        categories[category] = []
+                    categories[category].append((filename, metadata))
+            
+            summary += "**📋 Catalogs by Category:**\n\n"
+            
+            for category, catalogs in categories.items():
+                summary += f"### 🏷️ {category}\n"
+                for filename, metadata in catalogs:
+                    summary += f"**• {filename}**\n"
+                    summary += f"  - Summary: {metadata.summary}\n"
+                    summary += f"  - Products: {', '.join(metadata.product_types[:3])}\n"
+                    summary += f"  - Brands: {', '.join(metadata.brand_names[:2]) if metadata.brand_names else 'Generic'}\n"
+                    summary += f"  - Pages: {metadata.page_count}\n\n"
+            
+            summary += "\n**💡 Search Strategy:**\n"
+            summary += "• Ask specific product questions for detailed extraction\n"
+            summary += "• The system will automatically select the most relevant catalog\n"
+            summary += "• Deep content analysis will provide comprehensive answers\n"
+            
+            return summary
+            
+        except Exception as e:
+            return f"Error generating catalog summary: {str(e)}"
 
 
 class OrchestratorAgent:
@@ -322,6 +343,7 @@ class OrchestratorAgent:
                 """,
                 tools=[
                     agents.function_tool(self.tools.answer_query_with_best_catalog),
+                    agents.function_tool(self.tools.get_detailed_catalog_summary),  # Add this
                     agents.function_tool(self.tools.search_catalogs),
                     agents.function_tool(self.tools.get_catalog_overview),
                 ],

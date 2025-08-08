@@ -69,27 +69,135 @@ class CatalogTools:
         return list(set(products))  # Remove duplicates
     
     async def search_products(self, query: str) -> str:
-        """Search for products in the catalog using the full content."""
+        """Search and extract detailed information from catalog content."""
         query_lower = query.lower()
-        query_words = re.findall(r'\w+', query_lower)
         
-        print(f"🔍 Searching catalog '{self.catalog_name}' for: {query}")
-        print(f"Available content chunks: {len(self.content_chunks)}")
+        print(f"🔍 Searching '{self.catalog_name}' for: {query}")
         
-        # First, search in the product index for quick matches
-        index_results = self._search_product_index(query, query_words)
+        # Determine what type of information is requested
+        query_type = self._determine_query_type(query_lower)
         
-        # Then search in the full content
-        content_results = self._search_full_content(query, query_words)
+        # Create specific extraction prompt based on query type
+        if query_type == "USAGE_INSTRUCTIONS":
+            extraction_prompt = f"""
+            Extract COMPLETE usage instructions for the product mentioned in: {query}
+            
+            From this catalog content:
+            {self.catalog_data[:20000]}
+            
+            REQUIREMENTS:
+            1. Provide COMPLETE step-by-step usage instructions
+            2. Include all safety precautions mentioned
+            3. Include preparation steps, operation steps, and cleanup
+            4. Include any specific settings or modes mentioned
+            5. Reference specific page numbers if available
+            6. Include model numbers and product names
+            
+            Extract the FULL instructions as they appear in the manual - don't summarize.
+            """
         
-        # Combine and format results
-        combined_results = self._combine_search_results(index_results, content_results, query)
+        elif query_type == "WARRANTY_INFORMATION":
+            extraction_prompt = f"""
+            Extract COMPLETE warranty information for: {query}
+            
+            From this catalog content:
+            {self.catalog_data[:20000]}
+            
+            REQUIREMENTS:
+            1. Provide exact warranty duration and terms
+            2. Include what is covered and not covered
+            3. Include any conditions or requirements
+            4. Include contact information if available
+            5. Reference specific sections or pages
+            
+            Extract the COMPLETE warranty information as written in the manual.
+            """
         
-        if combined_results:
-            return self._format_search_results(combined_results, query)
         else:
-            # No results found - provide helpful alternative
-            return self._generate_no_results_response(query)
+            extraction_prompt = f"""
+            Find and extract detailed information about: {query}
+            
+            From this catalog content:
+            {self.catalog_data[:20000]}
+            
+            REQUIREMENTS:
+            1. Provide specific, detailed information
+            2. Include model numbers, specifications, features
+            3. Include any relevant instructions or procedures
+            4. Reference page numbers where found
+            5. Be comprehensive and specific
+            
+            Extract COMPLETE information - don't just summarize.
+            """
+        
+        try:
+            response = self.processor.model.generate_content(extraction_prompt)
+            result = response.text
+            
+            # If still not detailed enough, try with more content
+            if len(result) < 200 or self._is_still_vague(result):
+                print("First extraction insufficient, trying with more content...")
+                enhanced_prompt = f"""
+                This is a CRITICAL request. Extract ALL detailed information about: {query}
+                
+                Use this additional catalog content:
+                {self.catalog_data[10000:30000]}  # Different section
+                
+                Product Index for reference:
+                {self.product_index[:5000]}
+                
+                MANDATORY: Provide COMPLETE, DETAILED information. No vague responses allowed.
+                If this is about usage instructions, provide the FULL step-by-step process.
+                """
+                response = self.processor.model.generate_content(enhanced_prompt)
+                result = response.text
+            
+            return self._format_detailed_response(result, query)
+            
+        except Exception as e:
+            return f"Error extracting information: {str(e)}"
+
+    def _is_still_vague(self, response: str) -> bool:
+        """Check if response is still vague."""
+        vague_phrases = [
+            "can be found",
+            "available in the catalog",
+            "please refer to",
+            "consult the manual",
+            "see the documentation"
+        ]
+        return any(phrase in response.lower() for phrase in vague_phrases)
+
+    def _format_detailed_response(self, result: str, query: str) -> str:
+        """Format the response with proper headers."""
+        formatted = f"**Detailed Information from {self.catalog_name}:**\n\n"
+        formatted += f"**Query: {query}**\n\n"
+        formatted += result
+        
+        if "page" not in result.lower():
+            formatted += f"\n\n*Extracted from catalog: {self.catalog_name}*"
+        
+        return formatted
+
+    def _determine_query_type(self, query_lower: str) -> str:
+        """Determine the type of query for better response formatting."""
+        if any(word in query_lower for word in ['usage', 'instructions', 'how to', 'operate', 'use']):
+            return "USAGE_INSTRUCTIONS"
+        elif any(word in query_lower for word in ['warranty', 'guarantee', 'coverage']):
+            return "WARRANTY_INFORMATION"
+        elif any(word in query_lower for word in ['specifications', 'specs', 'features', 'dimensions']):
+            return "SPECIFICATIONS"
+        elif any(word in query_lower for word in ['price', 'cost', 'pricing']):
+            return "PRICING"
+        else:
+            return "GENERAL_INFORMATION"
+
+    def _format_detailed_response(self, result: str, query: str) -> str:
+        """Format the response to ensure it's detailed and specific."""
+        formatted = f"**Detailed Information for: '{query}'**\n\n"
+        formatted += result
+        formatted += f"\n\n*Source: {self.catalog_name} catalog content*"
+        return formatted
     
     def _search_product_index(self, query: str, query_words: List[str]) -> List[Dict]:
         """Search the product index for quick matches."""
@@ -116,6 +224,121 @@ class CatalogTools:
         
         return results
     
+    async def extract_complete_instructions(self, query: str) -> str:
+        """Direct LLM extraction for complete instructions."""
+        
+        instruction_prompt = f"""
+        You are analyzing a product manual to extract COMPLETE usage instructions.
+        
+        Query: {query}
+        
+        Manual Content:
+        {self.catalog_data}
+        
+        EXTRACT REQUIREMENTS:
+        1. Find the section with usage/operating instructions
+        2. Extract EVERY step mentioned in the instructions
+        3. Include all safety warnings and precautions
+        4. Include preparation steps, operation steps, and cleanup
+        5. Preserve the exact wording and sequence from the manual
+        6. Include any diagrams or references mentioned
+        7. Include model-specific instructions if applicable
+        
+        Provide the COMPLETE instructions as they appear in the manual.
+        Do not summarize or paraphrase - extract the full content.
+        """
+        
+        try:
+            response = self.processor.model.generate_content(instruction_prompt)
+            return response.text
+        except Exception as e:
+            return f"Error in direct extraction: {str(e)}"
+    
+    async def extract_complete_catalog_information(self, query: str) -> str:
+        """Extract comprehensive information by re-processing the entire catalog with LLM."""
+        
+        print(f"🔍 Deep extraction from {self.catalog_name} for: {query}")
+        
+        # Use the original PDF images for fresh analysis
+        if not self.pdf_images:
+            return "PDF images not available for deep analysis."
+        
+        # Process in batches for comprehensive extraction
+        batch_size = 4
+        all_extracted_info = []
+        
+        for i in range(0, len(self.pdf_images), batch_size):
+            batch = self.pdf_images[i:i + batch_size]
+            batch_num = i // batch_size + 1
+            
+            print(f"Processing batch {batch_num} for deep extraction...")
+            
+            deep_extraction_prompt = f"""
+            Analyze these pages from {self.catalog_name} to answer: {query}
+            
+            EXTRACTION REQUIREMENTS:
+            1. Find ALL information related to the query
+            2. Extract COMPLETE details including:
+            - Full product specifications and features
+            - Complete usage instructions (every step)
+            - Safety information and warnings
+            - Technical specifications and dimensions
+            - Warranty information and terms
+            - Maintenance and care instructions
+            - Troubleshooting information
+            - Contact and support information
+            
+            3. Include exact text from the manual - don't paraphrase
+            4. Reference page numbers where information is found
+            5. Extract even small details and specifications
+            
+            Query: {query}
+            
+            Provide COMPREHENSIVE, DETAILED extraction of ALL relevant information.
+            """
+            
+            try:
+                response = self.processor.model.generate_content([deep_extraction_prompt] + batch)
+                if response.text and response.text.strip():
+                    all_extracted_info.append(f"=== Pages {i+1}-{min(i+batch_size, len(self.pdf_images))} ===\n{response.text}")
+            except Exception as e:
+                print(f"Error processing batch {batch_num}: {e}")
+                continue
+        
+        if not all_extracted_info:
+            return f"Unable to extract information about '{query}' from {self.catalog_name}"
+        
+        # Combine all extracted information
+        combined_info = "\n\n".join(all_extracted_info)
+        
+        # Final synthesis to create comprehensive response
+        synthesis_prompt = f"""
+        Create a comprehensive, detailed response about: {query}
+        
+        Based on this extracted information from {self.catalog_name}:
+        {combined_info[:25000]}
+        
+        SYNTHESIS REQUIREMENTS:
+        1. Organize the information logically
+        2. Include ALL relevant details found
+        3. Maintain specific technical specifications
+        4. Include complete instructions if found
+        5. Reference page numbers where applicable
+        6. Make it comprehensive but well-organized
+        
+        Create a complete, detailed response that answers the user's query thoroughly.
+        """
+        
+        try:
+            synthesis_response = self.processor.model.generate_content(synthesis_prompt)
+            final_response = f"**Comprehensive Information about '{query}' from {self.catalog_name}:**\n\n"
+            final_response += synthesis_response.text
+            final_response += f"\n\n*Complete analysis based on {len(self.pdf_images)} pages from {self.catalog_name}*"
+            return final_response
+        except Exception as e:
+            # Fallback to combined raw extraction
+            return f"**Detailed Information from {self.catalog_name}:**\n\n{combined_info}"
+            
     def _search_full_content(self, query: str, query_words: List[str]) -> List[Dict]:
         """Search the full catalog content for detailed matches."""
         results = []

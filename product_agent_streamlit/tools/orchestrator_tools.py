@@ -113,3 +113,41 @@ class OrchestratorTools:
             
         except Exception as e:
             return f"Error getting catalog overview: {str(e)}"
+
+    async def get_detailed_catalog_summary(self) -> str:
+        """Get detailed summary of all catalogs with their specializations."""
+        try:
+            if not self.catalog_library.catalogs:
+                return "📚 **No catalogs available in the library.**"
+            
+            summary = f"📚 **Comprehensive Catalog Library Analysis**\n\n"
+            summary += f"**Total Catalogs:** {len(self.catalog_library.catalogs)}\n\n"
+            
+            # Group catalogs by category for better organization
+            categories = {}
+            for filename, metadata in self.catalog_library.catalogs.items():
+                for category in metadata.categories:
+                    if category not in categories:
+                        categories[category] = []
+                    categories[category].append((filename, metadata))
+            
+            summary += "**📋 Catalogs by Category:**\n\n"
+            
+            for category, catalogs in categories.items():
+                summary += f"### 🏷️ {category}\n"
+                for filename, metadata in catalogs:
+                    summary += f"**• {filename}**\n"
+                    summary += f"  - Summary: {metadata.summary}\n"
+                    summary += f"  - Products: {', '.join(metadata.product_types[:3])}\n"
+                    summary += f"  - Brands: {', '.join(metadata.brand_names[:2]) if metadata.brand_names else 'Generic'}\n"
+                    summary += f"  - Pages: {metadata.page_count}\n\n"
+            
+            summary += "\n**💡 Search Strategy:**\n"
+            summary += "• Ask specific product questions for detailed extraction\n"
+            summary += "• The system will automatically select the most relevant catalog\n"
+            summary += "• Deep content analysis will provide comprehensive answers\n"
+            
+            return summary
+            
+        except Exception as e:
+            return f"Error generating catalog summary: {str(e)}"
