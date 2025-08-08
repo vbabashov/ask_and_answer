@@ -361,7 +361,7 @@ class CatalogTools:
             index_lines = self.product_index.split('\n')[:15]  # First 15 lines
             overview += '\n'.join(index_lines)
             if len(self.product_index.split('\n')) > 15:
-                overview += f"\n... and {len(self.product_index.split(r'\n')) - 15} more products."
+                overview += f"\n... and {len(self.product_index.split('\n')) - 15} more products."
             overview += "\n\n"
         
         # Content statistics
